@@ -11,3 +11,4 @@ wheels/
 
 .mypy_cache/
 *.code-workspace
+uv.lock
