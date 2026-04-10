@@ -14,10 +14,10 @@ from sympy import Expr, Integer
 import torch
 from torch.fx import GraphModule
 
-from ...ir import FixedLayout, ShapeAsConstantBuffer, Subgraph, TensorBox
-from ...lowering import empty_strided
-from ...select_algorithm import autotune_select_algorithm
-from ...virtualized import V
+from torch._inductor.ir import FixedLayout, ShapeAsConstantBuffer, Subgraph, TensorBox
+from torch._inductor.lowering import empty_strided
+from torch._inductor.select_algorithm import autotune_select_algorithm
+from torch._inductor.virtualized import V
 from .common import (
     create_indices_fake,
     create_num_blocks_fake_generator,
@@ -74,7 +74,7 @@ def ensure_flash_available() -> bool:
         return False
 
 
-from ...codegen.cutedsl.cutedsl_template import CuteDSLTemplate
+from stiff.codegen.cutedsl.cutedsl_template import CuteDSLTemplate
 
 
 flash_attention_cutedsl_template = CuteDSLTemplate(

@@ -17,14 +17,14 @@ from torch._inductor.virtualized import V
 from torch.nn.attention.flex_attention import _Backend
 from torch.utils._sympy.functions import FloorDiv, Mod
 
-from ...ir import ComputedBuffer, ExternKernel, FixedLayout, TensorBox
-from ...lowering import empty, empty_strided, lowerings, register_lowering, to_dtype
-from ...select_algorithm import (
+from torch._inductor.ir import ComputedBuffer, ExternKernel, FixedLayout, TensorBox
+from torch._inductor.lowering import empty, empty_strided, lowerings, register_lowering, to_dtype
+from torch._inductor.select_algorithm import (
     autotune_select_algorithm,
     SymbolicGridFn,
     TritonTemplate,
 )
-from ...utils import can_use_tma
+from torch._inductor.utils import can_use_tma
 from .common import (
     build_subgraph_buffer,
     create_indices_fake,
@@ -51,7 +51,7 @@ from .flex_flash_attention import (
 
 
 if TYPE_CHECKING:
-    from ...template_heuristics.triton import FlexBwDConfig, FlexConfig
+    from torch._inductor.template_heuristics.triton import FlexBwDConfig, FlexConfig
 
 
 log = logging.getLogger(__name__)

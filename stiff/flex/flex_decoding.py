@@ -10,16 +10,16 @@ import torch
 from torch._inductor.virtualized import V
 from torch.utils._sympy.functions import FloorDiv, Mod
 
-from ... import ir
-from ...ir import FixedLayout, FlexibleLayout
-from ...lowering import empty, empty_strided, lowerings
-from ...runtime.runtime_utils import ceildiv, is_power_of_2, next_power_of_2
-from ...select_algorithm import (
+from torch._inductor import ir
+from torch._inductor.ir import FixedLayout, FlexibleLayout
+from torch._inductor.lowering import empty, empty_strided, lowerings
+from torch._inductor.runtime.runtime_utils import ceildiv, is_power_of_2, next_power_of_2
+from torch._inductor.select_algorithm import (
     autotune_select_algorithm,
     SymbolicGridFn,
     TritonTemplate,
 )
-from ...utils import can_use_tma
+from torch._inductor.utils import can_use_tma
 from .common import (
     create_indices_fake,
     create_num_blocks_fake_generator,

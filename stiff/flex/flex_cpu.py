@@ -14,9 +14,9 @@ from torch.utils._ordered_set import OrderedSet
 from torch.utils._sympy.numbers import int_oo
 from torch.utils._sympy.value_ranges import ValueRanges
 
-from ...codegen.cpp_flex_attention_template import CppFlexAttentionTemplate
-from ...ir import Buffer, FixedLayout, TensorBox
-from ...select_algorithm import autotune_select_algorithm
+from stiff.codegen.cpp_flex_attention_template import CppFlexAttentionTemplate
+from torch._inductor.ir import Buffer, FixedLayout, TensorBox
+from torch._inductor.select_algorithm import autotune_select_algorithm
 from .common import (
     build_subgraph_buffer,
     build_subgraph_module_buffer,

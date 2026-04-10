@@ -18,8 +18,8 @@ from typing_extensions import deprecated, Never, NotRequired, Self, TypedDict
 
 import torch
 from torch import Tensor
-from torch._higher_order_ops.flex_attention import flex_attention as flex_attention_hop
-from torch._higher_order_ops.utils import setup_compilation_env
+from stiff._higher_order_ops.flex_attention import flex_attention as flex_attention_hop
+from stiff._higher_order_ops.utils import setup_compilation_env
 from torch.nn.attention._utils import _validate_sdpa_input
 from torch.utils._pytree import GetAttrKey, tree_map_only
 

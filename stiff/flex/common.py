@@ -21,7 +21,7 @@ else:
     _IntLike = int | sympy.Expr
 
 
-from ...ir import (
+from torch._inductor.ir import (
     ComputedBuffer,
     ExternKernel,
     FixedLayout,
@@ -35,15 +35,15 @@ from ...ir import (
     Subgraph,
     TensorBox,
 )
-from ...lowering import (
+from torch._inductor.lowering import (
     _full,
     check_and_broadcast_indices,
     expand,
     index_output_size_and_inner_fn,
     to_dtype,
 )
-from ...select_algorithm import realize_inputs
-from ...utils import load_template
+from torch._inductor.select_algorithm import realize_inputs
+from torch._inductor.utils import load_template
 
 
 SubgraphResults = list[ComputedBuffer | None] | ComputedBuffer | None
@@ -121,7 +121,7 @@ def build_subgraph_module_buffer(
         subgraph: The Subgraph ir for which to produce the output node
     """
     # This one we gotta keep lazy
-    from ...subgraph_lowering import PointwiseSubgraphLowering
+    from torch._inductor.subgraph_lowering import PointwiseSubgraphLowering
 
     pw_subgraph = PointwiseSubgraphLowering(
         graph_module,
