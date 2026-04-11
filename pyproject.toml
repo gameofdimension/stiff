@@ -10,6 +10,81 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["stiff*"]
 
+# Ruff config — mirrors .flake8 rules
+[tool.ruff]
+line-length = 120
+exclude = [
+    ".git",
+    "docs",
+    "build",
+    "scripts",
+    "venv",
+    ".venv",
+    "*.pyi",
+]
+
+[tool.ruff.lint]
+select = [
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "C90",  # mccabe
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "N",    # pep8-naming
+    "W",    # pycodestyle warnings
+    "UP",   # pyupgrade
+    "I",    # isort
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E203",   # whitespace before ':' (conflicts with formatter)
+    "E305",   # expected 2 blank lines after class/func def
+    "E402",   # module level import not at top
+    "E501",   # line too long (formatter handles this)
+    "E721",   # do not compare types, use isinstance()
+    "E731",   # do not assign a lambda expression
+    "E741",   # ambiguous variable name
+    "E302",   # expected 2 blank lines before def
+    "W291",   # trailing whitespace
+    "F405",   # undefined name from star import
+    "F841",   # local variable assigned but unused
+    "N812",   # lowercase imported as non-lowercase (torch.nn.functional as F)
+    "N817",   # camelcase imported as acronym (DistributedDataParallel as DDP)
+    "N803",   # argument name should be lowercase
+    "N806",   # variable in function should be lowercase
+    "C408",   # unnecessary dict call (we prefer dict keyword args)
+    "B007",   # unused loop variable
+    "B008",   # function call in default argument
+    "E303",   # too many blank lines
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.isort]
+known-first-party = ["stiff"]
+
+[tool.ruff.format]
+indent-style = "space"
+
+# basedpyright config
+[tool.basedpyright]
+pythonVersion = "3.11"
+pythonPlatform = "Linux"
+typeCheckingMode = "standard"
+exclude = [
+    "docs",
+    "build",
+    "scripts",
+    "venv",
+    ".venv",
+    "gym",
+]
+reportMissingTypeStubs = false
+reportUnusedImport = "warning"
+reportUnusedVariable = "warning"
+reportPrivateUsage = "warning"
+
 [project]
 name = "stiff"
 version = "0.1.0"
@@ -22,4 +97,11 @@ dependencies = [
     "tabulate>=0.10.0",
     "torch==2.11.0",
     "triton==3.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "basedpyright>=1.0",
+    "pre-commit>=4.0",
+    "ruff>=0.4",
 ]
