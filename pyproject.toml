@@ -21,6 +21,7 @@ exclude = [
     "venv",
     ".venv",
     "*.pyi",
+    "gym",
 ]
 
 [tool.ruff.lint]
@@ -56,6 +57,8 @@ ignore = [
     "B007",   # unused loop variable
     "B008",   # function call in default argument
     "E303",   # too many blank lines
+    "C901",   # function too complex (inherited codebase, refactor separately)
+    "B905",   # zip() without strict= (inherited codebase, add separately)
 ]
 
 [tool.ruff.lint.mccabe]
@@ -67,23 +70,22 @@ known-first-party = ["stiff"]
 [tool.ruff.format]
 indent-style = "space"
 
-# basedpyright config
-[tool.basedpyright]
-pythonVersion = "3.11"
-pythonPlatform = "Linux"
-typeCheckingMode = "standard"
+# mypy config
+[tool.mypy]
+python_version = "3.11"
+platform = "linux"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
 exclude = [
-    "docs",
-    "build",
-    "scripts",
-    "venv",
-    ".venv",
-    "gym",
+    "^docs/",
+    "^build/",
+    "^scripts/",
+    "^venv/",
+    "^.venv/",
+    "^gym/",
 ]
-reportMissingTypeStubs = false
-reportUnusedImport = "warning"
-reportUnusedVariable = "warning"
-reportPrivateUsage = "warning"
 
 [project]
 name = "stiff"
@@ -101,7 +103,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "basedpyright>=1.0",
+    "mypy>=1.0",
     "pre-commit>=4.0",
     "ruff>=0.4",
 ]

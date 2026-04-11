@@ -5,21 +5,20 @@ import logging
 from typing import Any
 
 import sympy
-
 import torch
-from torch._inductor.virtualized import V
-from torch.utils._sympy.functions import FloorDiv, Mod
-
 from torch._inductor import ir
 from torch._inductor.ir import FixedLayout, FlexibleLayout
 from torch._inductor.lowering import empty, empty_strided, lowerings
 from torch._inductor.runtime.runtime_utils import ceildiv, is_power_of_2, next_power_of_2
 from torch._inductor.select_algorithm import (
-    autotune_select_algorithm,
     SymbolicGridFn,
     TritonTemplate,
+    autotune_select_algorithm,
 )
 from torch._inductor.utils import can_use_tma
+from torch._inductor.virtualized import V
+from torch.utils._sympy.functions import FloorDiv, Mod
+
 from .common import (
     create_indices_fake,
     create_num_blocks_fake_generator,
@@ -29,7 +28,6 @@ from .common import (
     maybe_realize,
     set_head_dim_values,
 )
-
 
 aten = torch.ops.aten
 prims = torch.ops.prims
@@ -46,9 +44,7 @@ def _use_flex_decoding(query, kv_indices, value, kernel_options, enable_gqa) -> 
     """
     force_flex = kernel_options.get("FORCE_USE_FLEX_ATTENTION", False)
 
-    short_query_length = V.graph.sizevars.evaluate_expr(
-        sympy.Lt(query.get_size()[-2], 128)
-    )
+    short_query_length = V.graph.sizevars.evaluate_expr(sympy.Lt(query.get_size()[-2], 128))
     non_zero_length = V.graph.sizevars.evaluate_expr(sympy.Gt(query.get_size()[-2], 0))
     static_batch = isinstance(query.get_size()[0], (int, sympy.Integer))
     static_num_heads = isinstance(query.get_size()[1], (int, sympy.Integer))
@@ -57,9 +53,7 @@ def _use_flex_decoding(query, kv_indices, value, kernel_options, enable_gqa) -> 
         # same kv head are handled by the same block. So it's hard to support different
         # kv num blocks for grouped query heads. We just fall back to main flex_attention
         # kernel where each query head is handled by a separate block.
-        valid_block_mask_num_heads = V.graph.sizevars.evaluate_expr(
-            sympy.Eq(kv_indices.get_size()[1], 1)
-        )
+        valid_block_mask_num_heads = V.graph.sizevars.evaluate_expr(sympy.Eq(kv_indices.get_size()[1], 1))
     else:
         valid_block_mask_num_heads = V.graph.sizevars.evaluate_expr(
             sympy.Or(
@@ -72,9 +66,7 @@ def _use_flex_decoding(query, kv_indices, value, kernel_options, enable_gqa) -> 
     Hkv = value.get_size()[1]
     ratio = FloorDiv(Hq, Hkv)
 
-    pw_of_two = V.graph.sizevars.guard_or_false(
-        sympy.And(sympy.Gt(ratio, 0), sympy.Eq(ratio & (ratio - 1), 0))
-    )
+    pw_of_two = V.graph.sizevars.guard_or_false(sympy.And(sympy.Gt(ratio, 0), sympy.Eq(ratio & (ratio - 1), 0)))
 
     out = (
         not force_flex
@@ -87,7 +79,7 @@ def _use_flex_decoding(query, kv_indices, value, kernel_options, enable_gqa) -> 
         and pw_of_two
     )
     log.debug(
-        "Use flex decoding %s, force_flex_attention=%s, short_query_length=%s, static_batch=%s, static_num_heads=%s",  # noqa: B950
+        "Use flex decoding %s, force_flex_attention=%s, short_query_length=%s, static_batch=%s, static_num_heads=%s",
         out,
         force_flex,
         short_query_length,
@@ -114,9 +106,7 @@ def flex_decoding_grid(batch_size, kv_heads, gqa_group_size, seq_len_q, d_model,
 flex_decoding_template = TritonTemplate(
     name="flex_decoding",
     grid=flex_decoding_grid,
-    source=load_flex_template("flex_decode")
-    + load_flex_template("utilities")
-    + load_flex_template("common"),
+    source=load_flex_template("flex_decode") + load_flex_template("utilities") + load_flex_template("common"),
     always_freeze_layout=True,
 )
 
@@ -177,16 +167,11 @@ def create_flex_decoding_kernel(*args, **kwargs):
     kernel_options = dict(kernel_options)
     # Mark symbols in custom kernel options as static shapes and add guards.
     kernel_options = {
-        k: V.graph.sizevars.guard_int(v) if isinstance(v, sympy.Symbol) else v
-        for k, v in kernel_options.items()
+        k: V.graph.sizevars.guard_int(v) if isinstance(v, sympy.Symbol) else v for k, v in kernel_options.items()
     }
 
-    seq_q_divisible = V.graph.sizevars.statically_known_true(
-        sympy.Eq(Mod(seq_len_q, 128), 0)
-    )
-    seq_kv_divisible = V.graph.sizevars.statically_known_true(
-        sympy.Eq(Mod(seq_len_kv, 128), 0)
-    )
+    seq_q_divisible = V.graph.sizevars.statically_known_true(sympy.Eq(Mod(seq_len_q, 128), 0))
+    seq_kv_divisible = V.graph.sizevars.statically_known_true(sympy.Eq(Mod(seq_len_kv, 128), 0))
     if seq_q_divisible and seq_kv_divisible:
         kernel_options.setdefault("IS_DIVISIBLE", True)
     else:
@@ -195,9 +180,7 @@ def create_flex_decoding_kernel(*args, **kwargs):
     # Calculate GQA head sharing
     gqa_shared_heads = FloorDiv(Hq, Hkv)
     if not is_power_of_2(gqa_shared_heads):
-        raise ValueError(
-            "Number of shared query heads sharing the same KV head must be power of 2. "
-        )
+        raise ValueError("Number of shared query heads sharing the same KV head must be power of 2. ")
     kernel_options.setdefault("GQA_SHARED_HEADS", gqa_shared_heads)
 
     # Determine if there are "full" blocks where we only need to apply score_mod, and can skip mask_mod
@@ -205,9 +188,7 @@ def create_flex_decoding_kernel(*args, **kwargs):
     kernel_options.setdefault("HAS_FULL_BLOCKS", has_full_blocks)
     if not has_full_blocks:
         # Create a plackeholder full block list in case it is empty
-        full_kv_num_blocks, full_kv_indices = (
-            empty(0, device=query.get_device()) for _ in range(2)
-        )
+        full_kv_num_blocks, full_kv_indices = (empty(0, device=query.get_device()) for _ in range(2))
 
     (
         query,
@@ -237,9 +218,7 @@ def create_flex_decoding_kernel(*args, **kwargs):
     choices: list[Any] = []
     dtype = key.get_dtype()
     head_dim = V.graph.sizevars.guard_int(key.get_size()[-1])
-    configs = V.choices.get_flex_decode_configs(
-        head_dim, dtype, query.get_device().type
-    )
+    configs = V.choices.get_flex_decode_configs(head_dim, dtype, query.get_device().type)
 
     # TODO: fix autotuning.
 
@@ -279,9 +258,7 @@ def create_flex_decoding_kernel(*args, **kwargs):
             # if V.graph.sizevars.evaluate_expr(sympy.Lt(query.get_size()[-2], 0))
             # else  # Always use a BLOCK_M > 16 before Triton fix https://github.com/triton-lang/triton/pull/4061 is in pin
             max(
-                next_power_of_2(
-                    V.graph.sizevars.optimization_hint(seq_len_q) * gqa_shared_heads
-                ),
+                next_power_of_2(V.graph.sizevars.optimization_hint(seq_len_q) * gqa_shared_heads),
                 1 if torch.xpu.is_available() else 16,
             )
         ),
@@ -346,9 +323,7 @@ def create_flex_decoding_kernel(*args, **kwargs):
 
         if cur_kernel_options.get("num_consumer_groups", False):
             cur_kernel_options.setdefault("num_consumer_groups", num_consumer_groups)
-            cur_kernel_options.setdefault(
-                "num_buffers_warp_spec", num_buffers_warp_spec
-            )
+            cur_kernel_options.setdefault("num_buffers_warp_spec", num_buffers_warp_spec)
 
         # Intel GPU enables TMA by default
         cur_kernel_options.setdefault("USE_TMA", bool(torch.xpu.is_available()))
@@ -384,28 +359,22 @@ def create_flex_decoding_kernel(*args, **kwargs):
             **cur_kernel_options,
         )
 
-    filtered_score_mod_buffers = [
-        buf for buf in score_mod_other_buffers if not isinstance(buf, sympy.Symbol)
-    ]
-    filtered_mask_mod_buffers = [
-        buf for buf in mask_mod_other_buffers if not isinstance(buf, sympy.Symbol)
-    ]
+    filtered_score_mod_buffers = [buf for buf in score_mod_other_buffers if not isinstance(buf, sympy.Symbol)]
+    filtered_mask_mod_buffers = [buf for buf in mask_mod_other_buffers if not isinstance(buf, sympy.Symbol)]
 
-    inputs_for_flex_decoding = (
-        [
-            query,
-            key,
-            value,
-            buf_M,
-            buf_L,
-            kv_num_blocks,
-            kv_indices,
-            full_kv_num_blocks,
-            full_kv_indices,
-        ]
-        + filtered_score_mod_buffers
-        + filtered_mask_mod_buffers
-    )
+    inputs_for_flex_decoding = [
+        query,
+        key,
+        value,
+        buf_M,
+        buf_L,
+        kv_num_blocks,
+        kv_indices,
+        full_kv_num_blocks,
+        full_kv_indices,
+        *filtered_score_mod_buffers,
+        *filtered_mask_mod_buffers,
+    ]
 
     input_gen_fns = {
         5: create_num_blocks_fake_generator(kv_indices),
@@ -423,12 +392,8 @@ def create_flex_decoding_kernel(*args, **kwargs):
     )
 
     # need subgraph inputs and outputs to analyze all symints used in flex attention
-    buf_ACC.data.data.subgraph_inps = list(score_mod_other_buffers) + list(
-        mask_mod_other_buffers
-    )
-    buf_ACC.data.data.subgraph_outs = get_fwd_subgraph_outputs(
-        score_mod_subgraph, mask_mod_subgraph
-    )
+    buf_ACC.data.data.subgraph_inps = list(score_mod_other_buffers) + list(mask_mod_other_buffers)
+    buf_ACC.data.data.subgraph_outs = get_fwd_subgraph_outputs(score_mod_subgraph, mask_mod_subgraph)
 
     # Reduction
 

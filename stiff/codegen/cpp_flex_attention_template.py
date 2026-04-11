@@ -5,19 +5,17 @@ import re
 from unittest.mock import patch
 
 import sympy
-
 import torch
 import torch.utils
-
-from torch.utils._ordered_set import OrderedSet
 from torch._inductor import ir
 from torch._inductor.ir import TensorBox
 from torch._inductor.select_algorithm import DataProcessorTemplateWrapper
 from torch._inductor.utils import parallel_num_threads
 from torch._inductor.virtualized import V
+from torch.utils._ordered_set import OrderedSet
+
 from .cpp_template import CppTemplate
 from .cpp_utils import GemmBlocking
-
 
 log = logging.getLogger(__name__)
 
@@ -706,21 +704,15 @@ class CppFlexAttentionTemplate(CppTemplate):
         self.scale = scale
         self.score_mod = score_mod
         self.mask_mod = mask_mod
-        self.score_buf_name = (
-            V.graph.register_buffer(self.score_mod) if self.score_mod else None
-        )
-        self.mask_buf_name = (
-            V.graph.register_buffer(self.mask_mod) if self.mask_mod else None
-        )
+        self.score_buf_name = V.graph.register_buffer(self.score_mod) if self.score_mod else None
+        self.mask_buf_name = V.graph.register_buffer(self.mask_mod) if self.mask_mod else None
 
         def get_idx(buf_name):
             match = re.search(r"\d+", buf_name)
             assert match, f"incorrect score buf name: {buf_name}"
             return match.group()
 
-        self.score_buf_idx = (
-            get_idx(self.score_buf_name) if self.score_buf_name else None
-        )
+        self.score_buf_idx = get_idx(self.score_buf_name) if self.score_buf_name else None
         self.mask_buf_idx = get_idx(self.mask_buf_name) if self.mask_buf_name else None
         self.kv_block_size = kv_block_size
         self.q_block_size = q_block_size
@@ -735,17 +727,12 @@ class CppFlexAttentionTemplate(CppTemplate):
         self.kernel_input_name_to_buffer = kernel_input_name_to_buffer
         self.block_vars = block_vars
         self.extra_sizevars = list(
-            OrderedSet(
-                val
-                for val in self.kernel_input_name_to_buffer.values()
-                if isinstance(val, sympy.Symbol)
-            )
+            OrderedSet(val for val in self.kernel_input_name_to_buffer.values() if isinstance(val, sympy.Symbol))
         )
         self.other_buf_start_idx = 5
         self.score_mod_other_buffers = (
             self.input_nodes[
-                self.other_buf_start_idx
-                + self.other_buffer_input_offset : self.other_buf_start_idx
+                self.other_buf_start_idx + self.other_buffer_input_offset : self.other_buf_start_idx
                 + self.other_buffer_input_offset
                 + self.len_score_other
             ]
@@ -753,11 +740,7 @@ class CppFlexAttentionTemplate(CppTemplate):
             else None
         )
         self.mask_mod_other_buffers = (
-            self.input_nodes[
-                self.other_buf_start_idx
-                + self.other_buffer_input_offset
-                + self.len_score_other :
-            ]
+            self.input_nodes[self.other_buf_start_idx + self.other_buffer_input_offset + self.len_score_other :]
             if self.has_other_buffer
             else None
         )
@@ -803,16 +786,15 @@ class CppFlexAttentionTemplate(CppTemplate):
                     get_arg(buffer_key),
                 )
 
-        return "\n".join(
-            f"auto {ptr} = {name};" for ptr, (name, _) in self.other_ptr_data.items()
-        )
+        return "\n".join(f"auto {ptr} = {name};" for ptr, (name, _) in self.other_ptr_data.items())
 
     def modification(self, subgraph_buffer, output_name, output_idx):
         assert isinstance(subgraph_buffer, ir.ComputedBuffer)
         subgraph_buffer_data = subgraph_buffer.data
         from torch._inductor.loop_body import LoopBody
-        from torch._inductor.utils import sympy_index_symbol_with_prefix, SymT
+        from torch._inductor.utils import SymT, sympy_index_symbol_with_prefix
         from torch._inductor.virtualized import V
+
         from .cpp import CppKernelProxy, KernelGroup, ParallelDepth
 
         kernel_group = KernelGroup()
@@ -824,9 +806,7 @@ class CppFlexAttentionTemplate(CppTemplate):
             "kv_idx": "in_ptr4",
         }
         if self.has_other_buffer:
-            kernel_input_args.update(
-                {arg: ptr for ptr, (_, arg) in self.other_ptr_data.items()}
-            )
+            kernel_input_args.update({arg: ptr for ptr, (_, arg) in self.other_ptr_data.items()})
 
         kernel_output_args = {output_name: f"out_ptr{output_idx}"}
 
@@ -846,10 +826,7 @@ class CppFlexAttentionTemplate(CppTemplate):
         bodies = []
         var_sizes_list = []
         var_sizes = tuple(subgraph_buffer.get_size())
-        var_ranges = {
-            sympy_index_symbol_with_prefix(SymT.INDEX, i): sz
-            for i, sz in enumerate(var_sizes)
-        }
+        var_ranges = {sympy_index_symbol_with_prefix(SymT.INDEX, i): sz for i, sz in enumerate(var_sizes)}
 
         dst_layout = subgraph_buffer.get_layout()
         output_index = dst_layout.make_indexer()([*var_ranges.keys()])
@@ -872,11 +849,8 @@ class CppFlexAttentionTemplate(CppTemplate):
         from torch._inductor.loop_body import MemoryUsageType
 
         assert all(
-            mem.buffer_name in kernel_group.args.input_buffers
-            for mem in body.memory_usage[MemoryUsageType.LOAD]
-        ), (
-            "All the buffers in the score and mask subgraph should be in kernel_group.args.input_buffers"
-        )
+            mem.buffer_name in kernel_group.args.input_buffers for mem in body.memory_usage[MemoryUsageType.LOAD]
+        ), "All the buffers in the score and mask subgraph should be in kernel_group.args.input_buffers"
 
         bodies.append(body)
         var_sizes_list.append((var_sizes, ()))
@@ -887,9 +861,7 @@ class CppFlexAttentionTemplate(CppTemplate):
             return ParallelDepth(parallel_depth=0, start_depth=0)
 
         # This loop is not parallelized since it is not the outermost loop.
-        with patch.object(
-            cpp_kernel_proxy.loop_nest, "max_parallel_depth", max_parallel_depth
-        ):
+        with patch.object(cpp_kernel_proxy.loop_nest, "max_parallel_depth", max_parallel_depth):
             kernel_group.finalize_kernel(cpp_kernel_proxy, [])
         output_code = kernel_group.loops_code.getvalue()
 
@@ -900,13 +872,9 @@ class CppFlexAttentionTemplate(CppTemplate):
         # We change the symbol strings back to "cur_qSplitSize" and "cur_kvSplitSize"
         # in the generated code thus they'll be filled with the real value during runtime.
         if var_q_symbol in kernel_group.args.sizevars:
-            output_code = output_code.replace(
-                kernel_group.args.sizevars[var_q_symbol], "cur_qSplitSize"
-            )
+            output_code = output_code.replace(kernel_group.args.sizevars[var_q_symbol], "cur_qSplitSize")
         if var_kv_symbol in kernel_group.args.sizevars:
-            output_code = output_code.replace(
-                kernel_group.args.sizevars[var_kv_symbol], "cur_kvSplitSize"
-            )
+            output_code = output_code.replace(kernel_group.args.sizevars[var_kv_symbol], "cur_kvSplitSize")
 
         return output_code
 
@@ -967,9 +935,7 @@ class CppFlexAttentionTemplate(CppTemplate):
         **kwargs,
     ) -> str:
         if epilogue_nodes is not None and epilogue_nodes != []:
-            raise NotImplementedError(
-                "Unsupported for `epilogue_nodes` in CppFlexAttentionTemplate."
-            )
+            raise NotImplementedError("Unsupported for `epilogue_nodes` in CppFlexAttentionTemplate.")
         # Query (Batch x Num_heads  x Q_seq_len  x Dim_per_head)
         #     -> (Batch x Q_seq_len  x Num_heads  x Dim_per_head)
         #  Key   (Batch x Num_heads  x KV_seq_len x Dim_per_head)
@@ -994,9 +960,7 @@ class CppFlexAttentionTemplate(CppTemplate):
             value=value,
             kv_num_blocks=self.input_nodes[3],
             kv_indices=self.input_nodes[4],
-            full_kv_num_blocks=(
-                self.input_nodes[5] if not self.no_full_kv_block else None
-            ),
+            full_kv_num_blocks=(self.input_nodes[5] if not self.no_full_kv_block else None),
             full_kv_indices=self.input_nodes[6] if not self.no_full_kv_block else None,
             score_mod_other_buffers=self.score_mod_other_buffers,
             mask_mod_other_buffers=self.mask_mod_other_buffers,
@@ -1019,22 +983,16 @@ class CppFlexAttentionTemplate(CppTemplate):
         )
         with contextlib.ExitStack() as stack:
             for buf in self.fake_buffers:
-                stack.enter_context(
-                    patch.object(V.graph, "get_dtype", self._fake_get_dtype(buf))
-                )
+                stack.enter_context(patch.object(V.graph, "get_dtype", self._fake_get_dtype(buf)))
             return self._template_from_string(FLEX_ATTENTION_TEMPLATE).render(**options)
 
     def codegen_softmax_fusion(self, kernel_name: str):
         # TODO: use inductor IR to rewrite those fusions
-        return self._template_from_string(SOFTMAX_FUSIONS).render(
-            dict(kernel_name=kernel_name)
-        )
+        return self._template_from_string(SOFTMAX_FUSIONS).render(dict(kernel_name=kernel_name))
 
     def codegen_brgemm_pack_function(self, kernel_name: str):
         # TODO: make them general for common bmm templates
-        return self._template_from_string(BRGEMM_PACK_FUNCTIONS).render(
-            dict(kernel_name=kernel_name)
-        )
+        return self._template_from_string(BRGEMM_PACK_FUNCTIONS).render(dict(kernel_name=kernel_name))
 
     def codegen_allocate_buffer(self, buffer_name: str, buffer_dtype, buffer_size):
         return self._template_from_string(ALLOCATE_BUFFER).render(

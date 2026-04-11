@@ -5,15 +5,13 @@ import math
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import sympy
-
 import torch
 from torch._inductor.virtualized import V
 from torch.utils._ordered_set import OrderedSet
 from torch.utils._pytree import tree_map, tree_map_only
-
 
 if TYPE_CHECKING:
     from torch._inductor.codegen.cuda_combined_scheduling import _IntLike
@@ -26,7 +24,6 @@ from torch._inductor.ir import (
     ExternKernel,
     FixedLayout,
     FlexibleLayout,
-    get_fill_order,
     InputBuffer,
     IRNode,
     MutationLayoutSHOULDREMOVE,
@@ -34,6 +31,7 @@ from torch._inductor.ir import (
     StorageBox,
     Subgraph,
     TensorBox,
+    get_fill_order,
 )
 from torch._inductor.lowering import (
     _full,
@@ -44,7 +42,6 @@ from torch._inductor.lowering import (
 )
 from torch._inductor.select_algorithm import realize_inputs
 from torch._inductor.utils import load_template
-
 
 SubgraphResults = list[ComputedBuffer | None] | ComputedBuffer | None
 
@@ -97,14 +94,8 @@ def zeros_and_scatter_lowering(shape: list[int], indices, values):
 def get_fwd_subgraph_outputs(
     subgraph_buffer: SubgraphResults, mask_graph_buffer: SubgraphResults
 ) -> list[ComputedBuffer | None]:
-    subgraph_buffer = (
-        subgraph_buffer if isinstance(subgraph_buffer, Sequence) else [subgraph_buffer]
-    )
-    mask_graph_buffer = (
-        mask_graph_buffer
-        if isinstance(mask_graph_buffer, Sequence)
-        else [mask_graph_buffer]
-    )
+    subgraph_buffer = subgraph_buffer if isinstance(subgraph_buffer, Sequence) else [subgraph_buffer]
+    mask_graph_buffer = mask_graph_buffer if isinstance(mask_graph_buffer, Sequence) else [mask_graph_buffer]
 
     return [*subgraph_buffer, *mask_graph_buffer]
 
@@ -127,9 +118,7 @@ def build_subgraph_module_buffer(
         graph_module,
         root_graph_lowering=V.graph,
         allowed_mutations=OrderedSet([torch.ops.flex_lib.zeros_and_scatter.default]),
-        additional_lowerings={
-            torch.ops.flex_lib.zeros_and_scatter.default: zeros_and_scatter_lowering
-        },
+        additional_lowerings={torch.ops.flex_lib.zeros_and_scatter.default: zeros_and_scatter_lowering},
     )
     with V.set_graph_handler(pw_subgraph):  # type: ignore[arg-type]
         pw_subgraph.run(*args)
@@ -171,11 +160,7 @@ def build_subgraph_buffer(args: list[TensorBox], subgraph: Subgraph) -> Subgraph
 def maybe_realize(args: list[IRNode | None]):
     """Accepts a list of optional IRNodes and returns a list of realized IRNodes"""
     return tree_map(
-        lambda x: (
-            realize_inputs(x)
-            if x is not None and not isinstance(x, sympy.Symbol)
-            else x
-        ),
+        lambda x: realize_inputs(x) if x is not None and not isinstance(x, sympy.Symbol) else x,
         args,
     )
 
@@ -221,9 +206,7 @@ def construct_strides(
 ) -> Sequence[_IntLike]:
     """From a list of sizes and a fill order, construct the strides of the permuted tensor."""
     # Initialize strides
-    assert len(sizes) == len(fill_order), (
-        "Length of sizes must match the length of the fill order"
-    )
+    assert len(sizes) == len(fill_order), "Length of sizes must match the length of the fill order"
     strides: list[_IntLike] = [0] * len(sizes)
 
     # Start with stride 1 for the innermost dimension
@@ -260,7 +243,7 @@ def infer_dense_strides(
         last_dim = len(size) - 1
         fill_order = list(fill_order)
         fill_order.remove(last_dim)
-        fill_order = [last_dim] + fill_order
+        fill_order = [last_dim, *fill_order]
         strides = construct_strides(size, fill_order)
 
     return strides
@@ -290,9 +273,7 @@ def create_num_blocks_fake_generator(sparse_indices):
     """
 
     def create_num_blocks_fake(x) -> torch.Tensor:
-        num_blocks_for_autotuning = V.graph.sizevars.optimization_hint(
-            sparse_indices.shape[-1]
-        )
+        num_blocks_for_autotuning = V.graph.sizevars.optimization_hint(sparse_indices.shape[-1])
         size = V.graph.sizevars.optimization_hints(x.get_size())
         return torch.full(
             size,
@@ -313,9 +294,7 @@ def contiguous_last_dim(x):
     return x
 
 
-def set_head_dim_values(
-    kernel_options: dict[str, Any], qk_head_dim, v_head_dim, graph_sizevars
-):
+def set_head_dim_values(kernel_options: dict[str, Any], qk_head_dim, v_head_dim, graph_sizevars):
     """
     Mutates kernel options, adding head dimension calculations.
 
@@ -329,16 +308,12 @@ def set_head_dim_values(
     # QK dimensions
     qk_head_dim_static = graph_sizevars.guard_int(qk_head_dim)
     kernel_options.setdefault("QK_HEAD_DIM", qk_head_dim_static)
-    kernel_options.setdefault(
-        "QK_HEAD_DIM_ROUNDED", next_power_of_two(qk_head_dim_static)
-    )
+    kernel_options.setdefault("QK_HEAD_DIM_ROUNDED", next_power_of_two(qk_head_dim_static))
 
     # V dimensions
     v_head_dim_static = graph_sizevars.guard_int(v_head_dim)
     kernel_options.setdefault("V_HEAD_DIM", v_head_dim_static)
-    kernel_options.setdefault(
-        "V_HEAD_DIM_ROUNDED", next_power_of_two(v_head_dim_static)
-    )
+    kernel_options.setdefault("V_HEAD_DIM_ROUNDED", next_power_of_two(v_head_dim_static))
 
     # Safety flag
     kernel_options.setdefault(

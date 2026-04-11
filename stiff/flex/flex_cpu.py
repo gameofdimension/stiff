@@ -7,16 +7,16 @@ import sys
 from typing import Any
 
 import sympy
-
 import torch
+from torch._inductor.ir import Buffer, FixedLayout, TensorBox
+from torch._inductor.select_algorithm import autotune_select_algorithm
 from torch._inductor.virtualized import V
 from torch.utils._ordered_set import OrderedSet
 from torch.utils._sympy.numbers import int_oo
 from torch.utils._sympy.value_ranges import ValueRanges
 
 from stiff.codegen.cpp_flex_attention_template import CppFlexAttentionTemplate
-from torch._inductor.ir import Buffer, FixedLayout, TensorBox
-from torch._inductor.select_algorithm import autotune_select_algorithm
+
 from .common import (
     build_subgraph_buffer,
     build_subgraph_module_buffer,
@@ -29,14 +29,8 @@ from .common import (
 
 
 def check_cpu_supported():
-    requires_avx2_on_cpu = (
-        torch.cpu._is_avx2_supported() and os.getenv("ATEN_CPU_CAPABILITY") != "default"
-    )
-    supported = (
-        requires_avx2_on_cpu
-        and not torch.xpu.is_available()
-        and sys.platform != "darwin"
-    )
+    requires_avx2_on_cpu = torch.cpu._is_avx2_supported() and os.getenv("ATEN_CPU_CAPABILITY") != "default"
+    supported = requires_avx2_on_cpu and not torch.xpu.is_available() and sys.platform != "darwin"
     return supported
 
 
@@ -76,15 +70,11 @@ def lower_cpu(
         )
 
     if kernel_options["OUTPUT_LOGSUMEXP"]:
-        raise NotImplementedError(
-            "torch.compile on CPU only supports inference and `return_lse` is not supported yet."
-        )
+        raise NotImplementedError("torch.compile on CPU only supports inference and `return_lse` is not supported yet.")
     if not check_cpu_supported():
-        raise NotImplementedError(
-            "torch.compile on current platform is not supported for CPU."
-        )
+        raise NotImplementedError("torch.compile on current platform is not supported for CPU.")
 
-    fake_buffers: list[Buffer] = []  # noqa: F821
+    fake_buffers: list[Buffer] = []
 
     # [Note] Handle the case where the split sizes are not statically known.
     # The value of cur_qSplitSize and cur_kvSplitSize are decided during runtime.
@@ -112,9 +102,7 @@ def lower_cpu(
             ("kv_idx", torch.int64, [1, cur_kvSplitSize]),
         ]
     ]
-    subgraph_buffer = build_subgraph_buffer(
-        placeholder_inps + list(score_mod_other_buffers), subgraph
-    )
+    subgraph_buffer = build_subgraph_buffer(placeholder_inps + list(score_mod_other_buffers), subgraph)
     if subgraph_buffer is not None:
         if isinstance(subgraph_buffer, list):
             for _buf in subgraph_buffer:
@@ -176,9 +164,7 @@ def lower_cpu(
 
         # Create a new node for torch.where
         with graph.inserting_after(full_node):
-            where_node = graph.call_function(
-                torch.ops.aten.where, args=(mask_node, qk_data_node, full_node)
-            )
+            where_node = graph.call_function(torch.ops.aten.where, args=(mask_node, qk_data_node, full_node))
 
         # Update the output node to return the result of torch.where
         output_node.args = (where_node,)
@@ -201,10 +187,7 @@ def lower_cpu(
     ]
 
     buffer_list = (
-        placeholder_inps
-        + list(score_mod_other_buffers)
-        + mask_graph_placeholder_inps
-        + list(mask_mod_other_buffers)
+        placeholder_inps + list(score_mod_other_buffers) + mask_graph_placeholder_inps + list(mask_mod_other_buffers)
     )
     for item in buffer_list:
         if isinstance(item, TensorBox):
@@ -242,9 +225,7 @@ def lower_cpu(
     )
 
     if len(OrderedSet([query.get_name(), key.get_name(), value.get_name()])) != 3:
-        raise NotImplementedError(
-            "Unsupported for now if query, key, value are the same buffer."
-        )
+        raise NotImplementedError("Unsupported for now if query, key, value are the same buffer.")
     if query.get_dtype() not in [torch.float, torch.bfloat16, torch.float16]:
         raise NotImplementedError(
             "`torch.float` , `torch.float16` and `torch.bfloat16` are supported in FlexAttention for CPU device. "
@@ -252,8 +233,8 @@ def lower_cpu(
         )
     score_mod_other_buffers = maybe_realize(score_mod_other_buffers)
     mask_mod_other_buffers = maybe_realize(mask_mod_other_buffers)
-    Bq, Hq, seq_len_q, qk_head_dim = query.get_size()
-    Bkv, Hkv, seq_len_kv, v_head_dim = value.get_size()
+    Bq, Hq, seq_len_q, _qk_head_dim = query.get_size()
+    _Bkv, _Hkv, seq_len_kv, v_head_dim = value.get_size()
     B = Bq
 
     # Construct output layout with strides matching the query.
@@ -283,14 +264,8 @@ def lower_cpu(
             ("score_others", score_mod_other_buffers),
             ("mask_others", mask_mod_other_buffers),
         ]:
-            kernel_input_name_to_buffer.update(
-                {f"{prefix}_{i}": buf for i, buf in enumerate(buffers)}
-            )
-        input_nodes += [
-            value
-            for value in kernel_input_name_to_buffer.values()
-            if not isinstance(value, sympy.Symbol)
-        ]
+            kernel_input_name_to_buffer.update({f"{prefix}_{i}": buf for i, buf in enumerate(buffers)})
+        input_nodes += [value for value in kernel_input_name_to_buffer.values() if not isinstance(value, sympy.Symbol)]
 
     skip_mask_score = kernel_options.get("SKIP_MASK_SCORE", False)
     # Mark SPARSE_KV_BLOCK_SIZE & SPARSE_Q_BLOCK_SIZE as static shapes and add guards.
@@ -298,14 +273,10 @@ def lower_cpu(
     SPARSE_Q_BLOCK_SIZE = V.graph.sizevars.guard_int(SPARSE_Q_BLOCK_SIZE)
     assert V.graph.sizevars.evaluate_expr(
         sympy.Le(seq_len_q, sympy.Mul(kv_indices.get_size()[-2], SPARSE_Q_BLOCK_SIZE))
-    ), (
-        "Q seqlen must be smaller than the block_mask size in the Q dimension, considering pass a larger block_mask."
-    )
+    ), "Q seqlen must be smaller than the block_mask size in the Q dimension, considering pass a larger block_mask."
     assert V.graph.sizevars.evaluate_expr(
         sympy.Le(seq_len_kv, sympy.Mul(kv_indices.get_size()[-1], SPARSE_KV_BLOCK_SIZE))
-    ), (
-        "KV seqlen must be smaller than the block_mask size in the KV dimension, considering pass a larger block_mask."
-    )
+    ), "KV seqlen must be smaller than the block_mask size in the KV dimension, considering pass a larger block_mask."
     CppFlexAttentionTemplate.add_choices(
         choices=_choices,
         input_nodes=input_nodes,
@@ -336,11 +307,7 @@ def lower_cpu(
     )
 
     # need subgraph inputs and outputs to analyze all symints used in flex attention
-    res.data.data.subgraph_inps = list(score_mod_other_buffers) + list(
-        mask_mod_other_buffers
-    )
-    res.data.data.subgraph_outs = get_fwd_subgraph_outputs(
-        subgraph_buffer, mask_graph_buffer
-    )
+    res.data.data.subgraph_inps = list(score_mod_other_buffers) + list(mask_mod_other_buffers)
+    res.data.data.subgraph_outs = get_fwd_subgraph_outputs(subgraph_buffer, mask_graph_buffer)
 
     return (res,)

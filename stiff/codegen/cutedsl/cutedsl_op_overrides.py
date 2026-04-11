@@ -7,14 +7,13 @@ template kernels, particularly for flex attention modifications.
 """
 
 import math
+from typing import ClassVar
 
 import sympy
-
 import torch
 from torch._inductor.codegen.common import CSEVariable, OpOverrides
 from torch._inductor.virtualized import OpsValue, V
 from torch.utils._sympy.value_ranges import ValueRanges
-
 
 CuteDSLArg = CSEVariable | str | bool | float | int
 
@@ -34,7 +33,7 @@ class CuteDSLOpOverrides(OpOverrides):
     and math functions (cute.math.exp, cute.math.sqrt, etc.)
     """
 
-    TORCH_TO_CUTE_DTYPE = {
+    TORCH_TO_CUTE_DTYPE: ClassVar[dict] = {
         torch.float16: "cutlass.Float16",
         torch.bfloat16: "cutlass.BFloat16",
         torch.float32: "cutlass.Float32",
@@ -83,9 +82,7 @@ class CuteDSLOpOverrides(OpOverrides):
         return _is_tensor(node.args[0]), _is_tensor(node.args[1])
 
     @staticmethod
-    def _ensure_tensor_ssa(
-        arg: CuteDSLArg, template_tensor: CuteDSLArg, *, is_tensor: bool
-    ) -> str:
+    def _ensure_tensor_ssa(arg: CuteDSLArg, template_tensor: CuteDSLArg, *, is_tensor: bool) -> str:
         """
         Convert scalar arguments to TensorSSA using cute.full_like if needed.
 
@@ -151,12 +148,8 @@ class CuteDSLOpOverrides(OpOverrides):
                     b=CuteDSLOpOverrides._as_expr(b),
                 )
 
-            a_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(
-                a, tensor_arg, is_tensor=a_is_tensor
-            )
-            b_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(
-                b, tensor_arg, is_tensor=b_is_tensor
-            )
+            a_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(a, tensor_arg, is_tensor=a_is_tensor)
+            b_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(b, tensor_arg, is_tensor=b_is_tensor)
             result_expr = op_format.format(a=a_ssa, b=b_ssa)
 
             dtype, bounds = CuteDSLOpOverrides._extract_dtype_and_bounds(a, b)
@@ -171,9 +164,7 @@ class CuteDSLOpOverrides(OpOverrides):
                 shape = tuple(expected.size()) if expected is not None else None
 
             # Create and return CSEVariable using CSE generation for caching
-            return V.kernel.cse.generate(
-                V.kernel.body, result_expr, bounds=bounds, dtype=dtype, shape=shape
-            )
+            return V.kernel.cse.generate(V.kernel.body, result_expr, bounds=bounds, dtype=dtype, shape=shape)
 
         return op_format.format(a=a, b=b)
 
@@ -208,9 +199,7 @@ class CuteDSLOpOverrides(OpOverrides):
         cse_var = CuteDSLOpOverrides._get_cse_var(x)
         if cse_var is not None:
             result_expr = op_format.format(x=str(cse_var))
-            return V.kernel.cse.generate(
-                V.kernel.body, result_expr, bounds=cse_var.bounds, dtype=cse_var.dtype
-            )
+            return V.kernel.cse.generate(V.kernel.body, result_expr, bounds=cse_var.bounds, dtype=cse_var.dtype)
 
         return op_format.format(x=x)
 
@@ -258,9 +247,7 @@ class CuteDSLOpOverrides(OpOverrides):
         """Exponential using CuteDSL cute.math.exp2 with log2(e) scaling."""
         if CuteDSLOpOverrides._get_cse_var(x) is None:
             x = CuteDSLOpOverrides._cast_expr(str(x), torch.float32)
-        return CuteDSLOpOverrides._apply_unary_op(
-            x, f"cute.math.exp2({{x}} * {CuteDSLOpOverrides.LOG2_E})"
-        )
+        return CuteDSLOpOverrides._apply_unary_op(x, f"cute.math.exp2({{x}} * {CuteDSLOpOverrides.LOG2_E})")
 
     @staticmethod
     def sqrt(x: CuteDSLArg) -> CuteDSLArg:
@@ -321,13 +308,9 @@ class CuteDSLOpOverrides(OpOverrides):
 
     @staticmethod
     def _minmax(a: CuteDSLArg, b: CuteDSLArg, *, op: str) -> CuteDSLArg:
-        tensor_arg = CuteDSLOpOverrides._get_cse_var(
-            a
-        ) or CuteDSLOpOverrides._get_cse_var(b)
+        tensor_arg = CuteDSLOpOverrides._get_cse_var(a) or CuteDSLOpOverrides._get_cse_var(b)
         if tensor_arg is not None:
-            return CuteDSLOpOverrides._apply_binary_op(
-                a, b, f"cute.where(({{a}}) {op} ({{b}}), {{a}}, {{b}})"
-            )
+            return CuteDSLOpOverrides._apply_binary_op(a, b, f"cute.where(({{a}}) {op} ({{b}}), {{a}}, {{b}})")
 
         lhs = str(a)
         rhs = str(b)
@@ -358,24 +341,14 @@ class CuteDSLOpOverrides(OpOverrides):
         tensor_arg = a_cse or b_cse or cond_cse
 
         if tensor_arg is not None:
-            a_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(
-                a, tensor_arg, is_tensor=a_cse is not None
-            )
-            b_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(
-                b, tensor_arg, is_tensor=b_cse is not None
-            )
-            cond_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(
-                condition, tensor_arg, is_tensor=cond_cse is not None
-            )
+            a_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(a, tensor_arg, is_tensor=a_cse is not None)
+            b_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(b, tensor_arg, is_tensor=b_cse is not None)
+            cond_ssa = CuteDSLOpOverrides._ensure_tensor_ssa(condition, tensor_arg, is_tensor=cond_cse is not None)
             result_expr = f"cute.where({cond_ssa}, {a_ssa}, {b_ssa})"
 
-            dtype, bounds = CuteDSLOpOverrides._extract_dtype_and_bounds(
-                a, b, condition
-            )
+            dtype, bounds = CuteDSLOpOverrides._extract_dtype_and_bounds(a, b, condition)
 
-            return V.kernel.cse.generate(
-                V.kernel.body, result_expr, bounds=bounds, dtype=dtype
-            )
+            return V.kernel.cse.generate(V.kernel.body, result_expr, bounds=bounds, dtype=dtype)
 
         return f"cute.where({condition}, {a}, {b})"
 
@@ -393,11 +366,7 @@ class CuteDSLOpOverrides(OpOverrides):
         else:
             x_dtype = torch.float32
 
-        abs_op = (
-            "mlir_math.absf"
-            if x_dtype in (torch.float16, torch.bfloat16, torch.float32)
-            else "mlir_math.absi"
-        )
+        abs_op = "mlir_math.absf" if x_dtype in (torch.float16, torch.bfloat16, torch.float32) else "mlir_math.absi"
         return CuteDSLOpOverrides._apply_unary_op(
             x,
             f"cute.TensorSSA({abs_op}({{x}}), {{x}}.shape, {{x}}.dtype)",
@@ -408,16 +377,12 @@ class CuteDSLOpOverrides(OpOverrides):
         """Negation for both TensorSSA and scalar-like expressions."""
         # TensorSSA path: avoid relying on __neg__ directly due upstream issue.
         if CuteDSLOpOverrides._get_cse_var(x) is not None:
-            return CuteDSLOpOverrides._apply_unary_op(
-                x, "cute.TensorSSA(-{x}, {x}.shape, {x}.dtype)"
-            )
+            return CuteDSLOpOverrides._apply_unary_op(x, "cute.TensorSSA(-{x}, {x}.shape, {x}.dtype)")
         # Scalar path: shape/dtype attributes are unavailable.
         return CuteDSLOpOverrides._apply_unary_op(x, "(-{x})")
 
     @staticmethod
-    def to_dtype(
-        x: CuteDSLArg, dtype: torch.dtype, src_dtype=None, use_compute_types=True
-    ) -> CuteDSLArg:
+    def to_dtype(x: CuteDSLArg, dtype: torch.dtype, src_dtype=None, use_compute_types=True) -> CuteDSLArg:
         """Type conversion using CuteDSL TensorSSA.to(Type[Numeric]).
 
         Maps torch dtypes to cutlass.cute.typing numeric types and emits
@@ -430,15 +395,11 @@ class CuteDSLOpOverrides(OpOverrides):
 
         cute_type = CuteDSLOpOverrides.TORCH_TO_CUTE_DTYPE.get(dtype)
         if cute_type is None:
-            raise NotImplementedError(
-                f"CuteDSL dtype cast not implemented for torch dtype: {dtype}"
-            )
+            raise NotImplementedError(f"CuteDSL dtype cast not implemented for torch dtype: {dtype}")
 
         if isinstance(x, CSEVariable):
-            result_expr = f"{str(x)}.to({cute_type})"
-            return V.kernel.cse.generate(
-                V.kernel.body, result_expr, bounds=x.bounds, dtype=dtype
-            )
+            result_expr = f"{x!s}.to({cute_type})"
+            return V.kernel.cse.generate(V.kernel.body, result_expr, bounds=x.bounds, dtype=dtype)
 
         return f"{x}.to({cute_type})"
 

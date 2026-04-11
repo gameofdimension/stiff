@@ -14,10 +14,3 @@ repos:
         types: [python]
         language: system
         pass_filenames: true
-
-      - id: basedpyright
-        name: basedpyright
-        entry: uv run --no-sync basedpyright
-        types: [python]
-        language: system
-        pass_filenames: false

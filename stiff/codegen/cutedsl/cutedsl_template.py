@@ -2,7 +2,7 @@
 import functools
 import itertools
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import patch
 
 from torch._inductor.utils import Placeholder
@@ -14,7 +14,6 @@ from ...ir import Buffer, ChoiceCaller, CuteDSLTemplateBuffer, IRNode, Layout, T
 from ..common import KernelTemplate
 from .cutedsl_kernel import CuteDSLTemplateKernel
 
-
 log = getArtifactLogger(__name__, "output_code")
 
 
@@ -23,7 +22,7 @@ class CuteDSLTemplate(KernelTemplate):
 
     kernel_type: type[Any] = CuteDSLTemplateKernel
     index_counter = itertools.count()
-    all_templates: dict[str, "CuteDSLTemplate"] = {}
+    all_templates: ClassVar[dict[str, "CuteDSLTemplate"]] = {}
 
     def __init__(
         self,
@@ -46,9 +45,7 @@ class CuteDSLTemplate(KernelTemplate):
     def _template_from_string(source: str) -> Any:
         return KernelTemplate._template_from_string(source)
 
-    def maybe_append_choice(
-        self, choices: list[Any], **kwargs: Any
-    ) -> NotImplementedError | None:
+    def maybe_append_choice(self, choices: list[Any], **kwargs: Any) -> NotImplementedError | None:
         """
         Maybe generates a new ChoiceCaller and appends it into existing choices.
         Returns None if success, otherwise returns the error.
@@ -57,10 +54,10 @@ class CuteDSLTemplate(KernelTemplate):
             choices.append(self.generate(**kwargs))
             return None
         except NotImplementedError as e:
-            log.debug("CuteDSL template choice generation failed: %s", e)  # noqa: G200
+            log.debug("CuteDSL template choice generation failed: %s", e)
             return e
         except Exception as e:
-            log.debug("CuteDSL template choice generation error: %s", e)  # noqa: G200
+            log.debug("CuteDSL template choice generation error: %s", e)
             return NotImplementedError(f"CuteDSL template failed: {e}")
 
     def generate(self, **kwargs: Any) -> ChoiceCaller:
@@ -78,9 +75,7 @@ class CuteDSLTemplate(KernelTemplate):
 
         self.output_node: Buffer = Buffer(name="buf_out", layout=layout)
         # Patch V.graph.get_dtype to handle the fake buf_out buffer
-        with patch.object(
-            V.graph, "get_dtype", KernelTemplate._fake_get_dtype(self.output_node)
-        ):
+        with patch.object(V.graph, "get_dtype", KernelTemplate._fake_get_dtype(self.output_node)):
             kernel = self.kernel_type(
                 kernel_name=kernel_name,
                 input_nodes=input_nodes,
@@ -157,9 +152,7 @@ class CuteDSLTemplateCaller(ChoiceCaller):
         self.template = template
         self.mutated_inputs = mutated_inputs
 
-    def _build_description(
-        self, name: str, template_kwargs: dict[str, Any] | None
-    ) -> str:
+    def _build_description(self, name: str, template_kwargs: dict[str, Any] | None) -> str:
         if not template_kwargs:
             return f"CuteDSL template {name}"
         kwargs_desc = ", ".join(f"{k}={v}" for k, v in template_kwargs.items())

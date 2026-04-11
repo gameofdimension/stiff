@@ -6,24 +6,23 @@ import functools
 import importlib
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
-from typing import Any, cast, Literal
+from typing import Any, Literal, cast
 
 import sympy
-from sympy import Expr, Integer
-
 import torch
-from torch.fx import GraphModule
-
+from sympy import Expr, Integer
 from torch._inductor.ir import FixedLayout, ShapeAsConstantBuffer, Subgraph, TensorBox
 from torch._inductor.lowering import empty_strided
 from torch._inductor.select_algorithm import autotune_select_algorithm
 from torch._inductor.virtualized import V
+from torch.fx import GraphModule
+
 from .common import (
+    SubgraphResults,
     create_indices_fake,
     create_num_blocks_fake_generator,
     infer_dense_strides,
     load_flex_template,
-    SubgraphResults,
 )
 
 
@@ -48,9 +47,7 @@ def _get_flex_flash_fwd_configs(
         return [FlexFlashConfig()]
     if has_aux_tensors:
         return [FlexFlashConfig(score_mod_vec_size=1)]
-    return [
-        FlexFlashConfig(score_mod_vec_size=v) for v in (1, 2, 4, 8, 16, 32, 64, 128)
-    ]
+    return [FlexFlashConfig(score_mod_vec_size=v) for v in (1, 2, 4, 8, 16, 32, 64, 128)]
 
 
 def _get_flex_flash_bwd_configs() -> list[FlexFlashConfig]:
@@ -75,7 +72,6 @@ def ensure_flash_available() -> bool:
 
 
 from stiff.codegen.cutedsl.cutedsl_template import CuteDSLTemplate
-
 
 flash_attention_cutedsl_template = CuteDSLTemplate(
     name="flash_attention_cutedsl", source=load_flex_template("flash_attention")
@@ -118,9 +114,7 @@ def _hierarchical_indexer_cute(
 
     def indexer(indices: Sequence[Expr]) -> Expr:
         assert offset == Integer(0), "Offset not supported for hierarchical indexing"
-        assert len(indices) == len(size), (
-            f"Rank mismatch: got {len(indices)} indices for tensor of rank {len(size)}"
-        )
+        assert len(indices) == len(size), f"Rank mismatch: got {len(indices)} indices for tensor of rank {len(size)}"
         if not indices:
             return Integer(0)
         if len(indices) == 1:
@@ -312,9 +306,7 @@ def _use_flex_flash_attention(
     )
 
     if not can_use:
-        raise RuntimeError(
-            f"BACKEND='FLASH' but flash attention cannot be used: {reason}"
-        )
+        raise RuntimeError(f"BACKEND='FLASH' but flash attention cannot be used: {reason}")
 
     return True
 
@@ -350,7 +342,7 @@ def create_flex_flash_attention_kernel(
         raise RuntimeError("CUTE flash attention not available")
 
     # Get dimensions
-    batch_size, num_heads, seq_len_q, head_dim = query.get_size()
+    batch_size, num_heads, seq_len_q, _head_dim = query.get_size()
     v_head_dim = value.get_size()[-1]
     device = query.get_device()
     dtype = query.get_dtype()
@@ -387,9 +379,7 @@ def create_flex_flash_attention_kernel(
     sparse_kv_block_size = V.graph.sizevars.guard_int(sparse_kv_block_size)
 
     mask_graph_is_trivial = is_trivial_mask_graph(mask_graph.graph_module)
-    score_graph_is_trivial = subgraph is None or is_trivial_score_graph(
-        subgraph.graph_module
-    )
+    score_graph_is_trivial = subgraph is None or is_trivial_score_graph(subgraph.graph_module)
 
     needs_block_mask = not mask_graph_is_trivial
     has_score_mod = not score_graph_is_trivial
@@ -400,23 +390,17 @@ def create_flex_flash_attention_kernel(
 
     input_nodes = [query, key, value, lse]
     if has_full_blocks:
-        input_nodes.extend(
-            [kv_num_blocks, kv_indices, full_kv_num_blocks, full_kv_indices]
-        )
+        input_nodes.extend([kv_num_blocks, kv_indices, full_kv_num_blocks, full_kv_indices])
 
     if needs_block_mask and not has_full_blocks:
-        raise NotImplementedError(
-            "Flash attention with block mask but without full blocks is not supported yet"
-        )
+        raise NotImplementedError("Flash attention with block mask but without full blocks is not supported yet")
 
     subgraphs = []
     if has_score_mod:
         subgraphs.append(subgraph_buffer)
     subgraphs.append(mask_graph_buffer)
 
-    configs = _get_flex_flash_fwd_configs(
-        has_score_mod, len(score_mod_other_buffers) > 0
-    )
+    configs = _get_flex_flash_fwd_configs(has_score_mod, len(score_mod_other_buffers) > 0)
 
     error: NotImplementedError | None = None
     for conf in configs:
@@ -474,9 +458,7 @@ def _can_use_flex_flash_attention_backward(
     if not ensure_flash_available():
         return False, "CUTE flash attention is not available"
 
-    if input_buffers_require_grads(
-        fw_subgraph.graph_module, num_score_mod_placeholders
-    ):
+    if input_buffers_require_grads(fw_subgraph.graph_module, num_score_mod_placeholders):
         return (
             False,
             "Input buffers require gradients (not supported by flash attention backward)",
@@ -528,9 +510,7 @@ def _use_flex_flash_attention_backward(
     )
 
     if not can_use:
-        raise RuntimeError(
-            f"BACKEND='FLASH' but flash attention cannot be used: {reason}"
-        )
+        raise RuntimeError(f"BACKEND='FLASH' but flash attention cannot be used: {reason}")
 
     return True
 
@@ -565,9 +545,7 @@ def create_flex_flash_attention_backward_kernel(
     dtype = query.get_dtype()
     assert device is not None
 
-    grad_query_strides = infer_dense_strides(
-        [batch_size, num_heads, seq_len_q, head_dim], query.get_stride()
-    )
+    grad_query_strides = infer_dense_strides([batch_size, num_heads, seq_len_q, head_dim], query.get_stride())
     grad_query = empty_strided(
         size=[batch_size, num_heads, seq_len_q, head_dim],
         stride=grad_query_strides,
@@ -575,9 +553,7 @@ def create_flex_flash_attention_backward_kernel(
         device=device,
     )
 
-    grad_key_strides = infer_dense_strides(
-        [batch_size, num_heads_kv, seq_len_kv, head_dim], key.get_stride()
-    )
+    grad_key_strides = infer_dense_strides([batch_size, num_heads_kv, seq_len_kv, head_dim], key.get_stride())
     grad_key = empty_strided(
         size=[batch_size, num_heads_kv, seq_len_kv, head_dim],
         stride=grad_key_strides,
@@ -585,9 +561,7 @@ def create_flex_flash_attention_backward_kernel(
         device=device,
     )
 
-    grad_value_strides = infer_dense_strides(
-        [batch_size, num_heads_kv, seq_len_kv, v_head_dim], value.get_stride()
-    )
+    grad_value_strides = infer_dense_strides([batch_size, num_heads_kv, seq_len_kv, v_head_dim], value.get_stride())
     grad_value = empty_strided(
         size=[batch_size, num_heads_kv, seq_len_kv, v_head_dim],
         stride=grad_value_strides,

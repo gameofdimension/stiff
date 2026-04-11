@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import Any
 
 import sympy
-
 import torch
 from torch._inductor import config
 from torch._inductor.codegen.common import (
@@ -32,7 +31,6 @@ from torch._inductor.virtualized import V
 
 from ...utils import sympy_index_symbol
 from .cutedsl_op_overrides import CuteDSLOpOverrides
-
 
 # TODO setting the 'main' kernel w/ this suffix. We have 3 should probably just auto generate this
 MAIN_SUFFIX = "main"
@@ -78,9 +76,7 @@ class CuteDSLSubgraphInfo:
         self.only_copy_if_non_none_fields = ("cse",)
 
     def to_dict(self):
-        return {
-            field.name: getattr(self, field.name) for field in dataclasses.fields(self)
-        }
+        return {field.name: getattr(self, field.name) for field in dataclasses.fields(self)}
 
 
 class CuteDSLTemplateKernel(Kernel):
@@ -188,14 +184,8 @@ class CuteDSLTemplateKernel(Kernel):
     @contextlib.contextmanager
     def set_subgraph_body(self, body_name: str):
         """Set the active subgraph body for template processing."""
-        assert all(
-            hasattr(self, field.name)
-            for field in dataclasses.fields(CuteDSLSubgraphInfo)
-        )
-        old_state = {
-            key.name: getattr(self, key.name)
-            for key in dataclasses.fields(CuteDSLSubgraphInfo)
-        }
+        assert all(hasattr(self, field.name) for field in dataclasses.fields(CuteDSLSubgraphInfo))
+        old_state = {key.name: getattr(self, key.name) for key in dataclasses.fields(CuteDSLSubgraphInfo)}
 
         if body_name not in self.subgraph_bodies:
             self.subgraph_bodies[body_name] = CuteDSLSubgraphInfo(
@@ -207,9 +197,7 @@ class CuteDSLTemplateKernel(Kernel):
 
         subgraph = self.subgraph_bodies[body_name]
         for key, value in subgraph.to_dict().items():
-            if value is None and key in getattr(
-                subgraph, "only_copy_if_non_none_fields", ()
-            ):
+            if value is None and key in getattr(subgraph, "only_copy_if_non_none_fields", ()):
                 continue
             setattr(self, key, value)
 
@@ -218,10 +206,7 @@ class CuteDSLTemplateKernel(Kernel):
         finally:
             # Save current state back to subgraph
             self.subgraph_bodies[body_name] = CuteDSLSubgraphInfo(
-                **{
-                    key.name: getattr(self, key.name)
-                    for key in dataclasses.fields(CuteDSLSubgraphInfo)
-                }
+                **{key.name: getattr(self, key.name) for key in dataclasses.fields(CuteDSLSubgraphInfo)}
             )
             # Restore old state
             for key, value in old_state.items():
@@ -230,9 +215,7 @@ class CuteDSLTemplateKernel(Kernel):
     @contextlib.contextmanager
     def create_subgraph_body(self, body_name: str, *, clear_cse: bool = False):
         """Create a new subgraph body for template processing."""
-        assert body_name not in self.subgraph_bodies, (
-            f"Subgraph body '{body_name}' already exists"
-        )
+        assert body_name not in self.subgraph_bodies, f"Subgraph body '{body_name}' already exists"
         new_cse = self.cse.clone() if clear_cse else None
         self.subgraph_bodies[body_name] = CuteDSLSubgraphInfo(
             body=IndentedBuffer(),
@@ -295,9 +278,7 @@ class CuteDSLTemplateKernel(Kernel):
                     params.append(arg_def.full_name())
 
             params.append("stream")
-            code.writeline(
-                f"def {self.kernel_name}_{MAIN_SUFFIX}({', '.join(params)}):"
-            )
+            code.writeline(f"def {self.kernel_name}_{MAIN_SUFFIX}({', '.join(params)}):")
             with code.indent():
                 code.splice(renames.getvalue())
             return code.getvalue()
@@ -376,9 +357,7 @@ class CuteDSLTemplateKernel(Kernel):
 
         # Add additional args from python_argdefs (output, sizevars, ..)
         orig_arg_defs, orig_call_args, _, orig_arg_types = self.args.python_argdefs()
-        for arg_def, call_arg, arg_type in zip(
-            orig_arg_defs, orig_call_args, orig_arg_types
-        ):
+        for arg_def, call_arg, arg_type in zip(orig_arg_defs, orig_call_args, orig_arg_types):
             # dedupe
             if arg_def.full_name() not in self._seen_input_args:
                 call_args.append(call_arg)
@@ -394,9 +373,7 @@ class CuteDSLTemplateKernel(Kernel):
         assert subgraph_number < len(self.subgraphs), (
             f"Invalid subgraph number provided to create_modification, {subgraph_number} must be < {len(self.subgraphs)}"
         )
-        assert self.body.getvalue() == "", (
-            "Body should be clear before adding a modification"
-        )
+        assert self.body.getvalue() == "", "Body should be clear before adding a modification"
         return self.subgraphs[subgraph_number]
 
     def modification(
@@ -414,18 +391,14 @@ class CuteDSLTemplateKernel(Kernel):
 
         with self.create_subgraph_body(f"mod_{subgraph_number}_{num}", clear_cse=True):
             subgraph = self._get_subgraph(subgraph_number)
-            modification_handler = ModificationWrapperCuteDSL(
-                self, subgraph_number, fixed_inputs, mask
-            )
+            modification_handler = ModificationWrapperCuteDSL(self, subgraph_number, fixed_inputs, mask)
             with V.set_kernel_handler(self), V.set_ops_handler(modification_handler):
                 assert isinstance(subgraph, (ComputedBuffer, list)), (
                     f"Expected ComputedBuffer or List[ComputedBuffer], got {type(subgraph)}"
                 )
 
                 if isinstance(subgraph, list):
-                    raise NotImplementedError(
-                        "Scatter graphs are not supported for CuteDSL"
-                    )
+                    raise NotImplementedError("Scatter graphs are not supported for CuteDSL")
 
                 if isinstance(subgraph.data, InputBuffer):
                     # grad_score_mod can be InputBuffers
@@ -435,15 +408,11 @@ class CuteDSLTemplateKernel(Kernel):
                     out = subgraph.data.inner_fn(())
 
             if output_name is not None:
-                assert out is not None, (
-                    f"Expected computation result for named output {output_name}"
-                )
+                assert out is not None, f"Expected computation result for named output {output_name}"
                 self.body.writeline(f"{output_name} = {out.value}")
             else:
                 # Side-effect only: no output assignment (currently only for scatter operations)
-                raise NotImplementedError(
-                    "Side-effect only modifications not yet supported for CuteDSL"
-                )
+                raise NotImplementedError("Side-effect only modifications not yet supported for CuteDSL")
 
             # Add Buffers that were added during modification
             self.collected_tensor_buffers.extend(modification_handler.tensor_buffers)
@@ -494,34 +463,23 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
             buffer = V.graph.get_buffer(name)
             var_dtype = buffer.dtype
 
-            cute_dtype = CuteDSLOpOverrides.TORCH_TO_CUTE_DTYPE.get(
-                var_dtype, "cutlass.Float32"
-            )
+            cute_dtype = CuteDSLOpOverrides.TORCH_TO_CUTE_DTYPE.get(var_dtype, "cutlass.Float32")
             idx_vars = [
                 self._emit_scalar_fragment(
                     self.kernel.kexpr(self.kernel.rename_indexing(dim_index)),
                     "cutlass.Int32",
                     torch.int32,
                 )
-                for dim_index in (
-                    index.args if isinstance(index, HierarchicalIndex) else (index,)
-                )
+                for dim_index in (index.args if isinstance(index, HierarchicalIndex) else (index,))
             ]
 
             val_frag = self.kernel.cse.newvar(dtype=var_dtype)
-            self.kernel.body.writeline(
-                f"{val_frag} = cute.make_rmem_tensor(1, {cute_dtype})"
-            )
-            self.kernel.body.writeline(
-                f"{val_frag}[0] = ({var}[{', '.join(idx_vars)}])"
-            )
+            self.kernel.body.writeline(f"{val_frag} = cute.make_rmem_tensor(1, {cute_dtype})")
+            self.kernel.body.writeline(f"{val_frag}[0] = ({var}[{', '.join(idx_vars)}])")
 
             final_expr = f"{val_frag}.load()"
 
-            if (
-                var_dtype in (torch.float16, torch.bfloat16)
-                and config.triton.codegen_upcast_to_fp32
-            ):
+            if var_dtype in (torch.float16, torch.bfloat16) and config.triton.codegen_upcast_to_fp32:
                 final_expr = f"({final_expr}).to(cutlass.Float32)"
                 var_dtype = torch.float32
 
@@ -536,13 +494,9 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
         value = self.fixed_inputs[name]
         dtype = self._get_input_dtype(name)
 
-        return self.kernel.cse.generate(
-            self.kernel.body, value, bounds=ValueRanges.unknown(), dtype=dtype
-        )
+        return self.kernel.cse.generate(self.kernel.body, value, bounds=ValueRanges.unknown(), dtype=dtype)
 
-    def _emit_scalar_fragment(
-        self, expr_str: str, cute_dtype: str, torch_dtype: torch.dtype
-    ) -> str:
+    def _emit_scalar_fragment(self, expr_str: str, cute_dtype: str, torch_dtype: torch.dtype) -> str:
         """
         Convert expression to indexable scalar for tensor loads.
 
@@ -558,9 +512,7 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
             return expr_str
 
         result = self.kernel.cse.newvar(dtype=torch_dtype)
-        self.kernel.body.writeline(
-            f"{result} = ssa_to_indexable({expr_str}, {cute_dtype})"
-        )
+        self.kernel.body.writeline(f"{result} = ssa_to_indexable({expr_str}, {cute_dtype})")
         return str(result)
 
     def indirect_indexing(self, index_var: str, size, check, wrap_neg=True):
@@ -568,12 +520,8 @@ class ModificationWrapperCuteDSL(V.WrapperHandler):  # type: ignore[name-defined
         return sympy_index_symbol(str(index_var))
 
     # pyrefly: ignore [bad-override]
-    def store(
-        self, name: str, index: sympy.Expr, value: CSEVariable, mode: StoreMode = None
-    ) -> str:
-        raise NotImplementedError(
-            "Store operations not supported - CuteDSL limited to read-only operations"
-        )
+    def store(self, name: str, index: sympy.Expr, value: CSEVariable, mode: StoreMode = None) -> str:
+        raise NotImplementedError("Store operations not supported - CuteDSL limited to read-only operations")
 
     def _add_kernel_input(self, name: str):
         """Add name as input to kernel and return input ref."""

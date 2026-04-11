@@ -21,7 +21,6 @@ from ...utils import get_fused_kernel_name, get_kernel_metadata
 from ...virtualized import V
 from ..common import BackendFeature, IndentedBuffer
 
-
 log = logging.getLogger(__name__)
 
 
@@ -39,17 +38,13 @@ class CuteDSLScheduling(BaseScheduling):
     @staticmethod
     def is_cutedsl_template(node: BaseSchedulerNode) -> bool:
         """Check if a node is a CuteDSL template."""
-        return isinstance(node, SchedulerNode) and isinstance(
-            node.node, CuteDSLTemplateBuffer
-        )
+        return isinstance(node, SchedulerNode) and isinstance(node.node, CuteDSLTemplateBuffer)
 
     def is_cutedsl_fused_template(self, node: BaseSchedulerNode) -> bool:
         """Check if a node is a fused CuteDSL template."""
         return isinstance(node, FusedSchedulerNode) and self.is_cutedsl_template(node)
 
-    def can_fuse_vertical(
-        self, node1: BaseSchedulerNode, node2: BaseSchedulerNode
-    ) -> bool:
+    def can_fuse_vertical(self, node1: BaseSchedulerNode, node2: BaseSchedulerNode) -> bool:
         """
         TODO CuteDSL doesn't support vertical fusion yet.
         This could be extended in the future for epilogue fusion.
@@ -84,9 +79,7 @@ class CuteDSLScheduling(BaseScheduling):
             else:
                 kernel_name = f"cutedsl_{fused_name}_{kernel_hash}"
             wrapper.src_to_kernel[src_code_str] = kernel_name
-            src_code_str = src_code_str.replace(
-                str(Placeholder.KERNEL_NAME), kernel_name
-            )
+            src_code_str = src_code_str.replace(str(Placeholder.KERNEL_NAME), kernel_name)
 
             _, _, kernel_path = get_path(code_hash(src_code_str), "py")
 
@@ -98,9 +91,7 @@ class CuteDSLScheduling(BaseScheduling):
             metadata_comment = f"# kernel path: {kernel_path}"
             origins, detailed_origins = get_kernel_metadata(node_schedule, wrapper)
             metadata_comment += "\n" + origins + "\n" + detailed_origins
-            wrapper.define_kernel(
-                kernel_name, compile_wrapper.getvalue(), metadata_comment
-            )
+            wrapper.define_kernel(kernel_name, compile_wrapper.getvalue(), metadata_comment)
         return kernel_name
 
     def codegen_template(
