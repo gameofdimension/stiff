@@ -13,3 +13,4 @@ wheels/
 *.code-workspace
 uv.lock
 .ipynb_checkpoints/
+.ruff_cache/
