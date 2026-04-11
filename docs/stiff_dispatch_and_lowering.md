@@ -239,7 +239,7 @@ Dynamo 产出的 FX Graph 进入 Inductor
         │   @register_lowering(torch.ops.higher_order.flex_attention)
         │       │
         │       ▼
-        │   stiff/flex/flex_attention.py:106 的 flex_attention()
+        │   stiff/_inductor/flex_attention.py:106 的 flex_attention()
         │       │
         │       ├── build_subgraph_buffer(score_graph) → Inductor IR (ComputedBuffer)
         │       ├── build_subgraph_buffer(mask_graph)  → Inductor IR (ComputedBuffer)
@@ -260,7 +260,7 @@ Dynamo 产出的 FX Graph 进入 Inductor
 
 ### 3.1 TritonTemplate 实例化（模块加载时）
 
-`stiff/flex/flex_attention.py:97-102`:
+`stiff/_inductor/flex_attention.py:97-102`:
 
 ```python
 flex_attention_template = TritonTemplate(
@@ -277,7 +277,7 @@ flex_attention_template = TritonTemplate(
 
 ### 3.2 @register_lowering 注册降级函数
 
-`stiff/flex/flex_attention.py:105-116`:
+`stiff/_inductor/flex_attention.py:105-116`:
 
 ```python
 @register_lowering(torch.ops.higher_order.flex_attention, type_promotion_kind=None)
@@ -288,7 +288,7 @@ Inductor 看到 FX Graph 中的 `call_function[torch.ops.higher_order.flex_atten
 
 ### 3.3 子图降级：FX GraphModule → Inductor IR
 
-`stiff/flex/flex_attention.py:177-200`:
+`stiff/_inductor/flex_attention.py:177-200`:
 
 ```python
 placeholder_inps = [
@@ -303,13 +303,13 @@ mask_graph_buffer = build_subgraph_buffer(mask_graph_placeholder_inps + list(mas
 freeze_irnodes(mask_graph_buffer)
 ```
 
-`build_subgraph_buffer`（定义在 `stiff/flex/common.py`）将 FX GraphModule 转换为 Inductor IR 的 ComputedBuffer 节点。对于 `_identity`，产出的 ComputedBuffer 是一个直通（直接返回输入 score）；对于 `causal_bias`，产出的 ComputedBuffer 包含 `where(m >= n, score, -inf)` 的 IR 表示。
+`build_subgraph_buffer`（定义在 `stiff/_inductor/common.py`）将 FX GraphModule 转换为 Inductor IR 的 ComputedBuffer 节点。对于 `_identity`，产出的 ComputedBuffer 是一个直通（直接返回输入 score）；对于 `causal_bias`，产出的 ComputedBuffer 包含 `where(m >= n, score, -inf)` 的 IR 表示。
 
 这些 ComputedBuffer 节点就是模板中 `{{ modification(...) }}` 宏要遍历的对象——宏将每个 IR 节点翻译成等价的 Triton 指令。
 
 ### 3.4 autotune config 遍历 → maybe_append_choice
 
-`stiff/flex/flex_attention.py:354-443`:
+`stiff/_inductor/flex_attention.py:354-443`:
 
 ```python
 choices: list[Any] = []
@@ -378,7 +378,7 @@ maybe_append_choice(choices, **kwargs)          # 第 1794 行
 
 ### 3.6 autotune_select_algorithm：从 choices 中选最优
 
-`stiff/flex/flex_attention.py:464-472`:
+`stiff/_inductor/flex_attention.py:464-472`:
 
 ```python
 out, _ = autotune_select_algorithm(
@@ -435,11 +435,11 @@ out, _ = autotune_select_algorithm(
 | `stiff/_higher_order_ops/flex_attention.py` | 402-468 | `trace_flex_attention`：Dynamo 追踪 |
 | `stiff/_higher_order_ops/flex_attention.py` | 471-497 | ProxyTorchDispatchMode handler |
 | `stiff/_higher_order_ops/flex_attention.py` | 856- | Autograd handler |
-| `stiff/flex/flex_attention.py` | 97-102 | `flex_attention_template` TritonTemplate 实例化 |
-| `stiff/flex/flex_attention.py` | 105-116 | `@register_lowering` 注册 Inductor 降级 |
-| `stiff/flex/flex_attention.py` | 177-200 | `build_subgraph_buffer` 调用 |
-| `stiff/flex/flex_attention.py` | 354-443 | autotune config 遍历 + `maybe_append_choice` |
-| `stiff/flex/flex_attention.py` | 464-472 | `autotune_select_algorithm` 调用 |
+| `stiff/_inductor/flex_attention.py` | 97-102 | `flex_attention_template` TritonTemplate 实例化 |
+| `stiff/_inductor/flex_attention.py` | 105-116 | `@register_lowering` 注册 Inductor 降级 |
+| `stiff/_inductor/flex_attention.py` | 177-200 | `build_subgraph_buffer` 调用 |
+| `stiff/_inductor/flex_attention.py` | 354-443 | autotune config 遍历 + `maybe_append_choice` |
+| `stiff/_inductor/flex_attention.py` | 464-472 | `autotune_select_algorithm` 调用 |
 | `torch/_inductor/select_algorithm.py` | 1753 | `TritonTemplate` 类定义 |
 | `torch/_inductor/select_algorithm.py` | 1794-1817 | `TritonTemplate.maybe_append_choice` |
 | `torch/_inductor/select_algorithm.py` | 1820-2024 | `TritonTemplate.generate_and_load`（Jinja2 渲染） |

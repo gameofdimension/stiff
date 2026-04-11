@@ -9,8 +9,8 @@ STIFF 是从 PyTorch Flex Attention（论文 [arXiv:2412.05496](https://arxiv.or
 ```
 Layer 1: 用户 API          → stiff/attention/flex_attention.py      (1800 行)
 Layer 2: 高阶算子          → stiff/_higher_order_ops/flex_attention.py (1371 行)
-Layer 3: Inductor 降级     → stiff/flex/  (triton / flash / cpu / decoding)
-Layer 4: 内核代码生成      → stiff/flex/templates/*.jinja + stiff/codegen/
+Layer 3: Inductor 降级     → stiff/_inductor/  (triton / flash / cpu / decoding)
+Layer 4: 内核代码生成      → stiff/_inductor/templates/*.jinja + stiff/codegen/
 ```
 
 | 层级 | 关键组件 | 作用 |
@@ -225,7 +225,7 @@ trace_flex_attention()
 
 #### 阶段 3：Inductor 降级
 
-`stiff/flex/flex_attention.py:105-478`，`@register_lowering(torch.ops.higher_order.flex_attention)`：
+`stiff/_inductor/flex_attention.py:105-478`，`@register_lowering(torch.ops.higher_order.flex_attention)`：
 
 ```
 flex_attention(query, key, value, subgraph, block_mask, ...)
@@ -463,14 +463,14 @@ causal block_mask:
 |------|------|------|
 | `stiff/attention/flex_attention.py` | 1800 | L1: 用户 API、BlockMask、create_block_mask、_vmap_for_bhqkv |
 | `stiff/_higher_order_ops/flex_attention.py` | 1371 | L2: FlexAttentionHOP、math_attention、trace_flex_attention、autograd |
-| `stiff/flex/flex_attention.py` | 1014 | L3: Inductor 降级、后端选择、autotune |
-| `stiff/flex/common.py` | 340 | L3: build_subgraph_buffer、子图降级工具 |
-| `stiff/flex/templates/flex_attention.py.jinja` | 225 | L4: 前向 Triton 内核模板 |
-| `stiff/flex/templates/common.py.jinja` | 205 | L4: 外层内核 + modification 宏调用点 |
-| `stiff/flex/templates/utilities.py.jinja` | 60 | L4: 工具函数（load_checked_2d、稀疏块寻址等） |
-| `stiff/flex/templates/flex_backwards.py.jinja` | 751 | L4: 反向 Triton 内核模板 |
-| `stiff/flex/flex_flash_attention.py` | 664 | L3: Flash Attention 4 (CuteDSL) 后端 |
-| `stiff/flex/flex_decoding.py` | 426 | L3: 短序列优化后端 |
-| `stiff/flex/flex_cpu.py` | 314 | L3: CPU 后端 (C++ template) |
+| `stiff/_inductor/flex_attention.py` | 1014 | L3: Inductor 降级、后端选择、autotune |
+| `stiff/_inductor/common.py` | 340 | L3: build_subgraph_buffer、子图降级工具 |
+| `stiff/_inductor/templates/flex_attention.py.jinja` | 225 | L4: 前向 Triton 内核模板 |
+| `stiff/_inductor/templates/common.py.jinja` | 205 | L4: 外层内核 + modification 宏调用点 |
+| `stiff/_inductor/templates/utilities.py.jinja` | 60 | L4: 工具函数（load_checked_2d、稀疏块寻址等） |
+| `stiff/_inductor/templates/flex_backwards.py.jinja` | 751 | L4: 反向 Triton 内核模板 |
+| `stiff/_inductor/flex_flash_attention.py` | 664 | L3: Flash Attention 4 (CuteDSL) 后端 |
+| `stiff/_inductor/flex_decoding.py` | 426 | L3: 短序列优化后端 |
+| `stiff/_inductor/flex_cpu.py` | 314 | L3: CPU 后端 (C++ template) |
 | `stiff/codegen/cutedsl/` | 多文件 | L4: CuteDSL 代码生成基础设施 |
 | `stiff/codegen/cpp_flex_attention_template.py` | 1048 | L4: CPU C++ 内核代码生成 |
