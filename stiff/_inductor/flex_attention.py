@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import math
-import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -37,16 +36,18 @@ from .common import (
     maybe_realize,
     set_head_dim_values,
 )
-from .flex_cpu import lower_cpu
+
+# from .flex_cpu import lower_cpu
 from .flex_decoding import _use_flex_decoding, create_flex_decoding_kernel
-from .flex_flash_attention import (
-    _use_flex_flash_attention,
-    _use_flex_flash_attention_backward,
-    create_flex_flash_attention_backward_kernel,
-    create_flex_flash_attention_kernel,
-    is_trivial_mask_graph,
-    is_trivial_score_graph,
-)
+
+# from .flex_flash_attention import (
+#     _use_flex_flash_attention,
+#     _use_flex_flash_attention_backward,
+#     create_flex_flash_attention_backward_kernel,
+#     create_flex_flash_attention_kernel,
+#     is_trivial_mask_graph,
+#     is_trivial_score_graph,
+# )
 
 if TYPE_CHECKING:
     from torch._inductor.template_heuristics.triton import FlexBwDConfig, FlexConfig
@@ -95,14 +96,14 @@ def get_float32_precision():
 
 
 flex_attention_template = TritonTemplate(
-    name="flex_attention",
+    name="stiff_flex_attention",
     grid=flex_attention_grid,
     source=load_flex_template("flex_attention") + load_flex_template("utilities") + load_flex_template("common"),
-    always_freeze_layout=True,
+    # always_freeze_layout=True,
 )
 
 
-@register_lowering(torch.ops.higher_order.stiff_flex_attention, type_promotion_kind=None)
+@register_lowering(torch.ops.higher_order.flex_attention, type_promotion_kind=None)
 def flex_attention(
     query,
     key,
@@ -120,18 +121,19 @@ def flex_attention(
     2. Flex Decode Triton Template
     3. Cpu specific CPP template
     """
-    if query.get_device().type == "cpu":
-        return lower_cpu(
-            query,
-            key,
-            value,
-            subgraph,
-            block_mask,
-            scale,
-            kernel_options,
-            score_mod_other_buffers,
-            mask_mod_other_buffers,
-        )
+    assert not query.get_device().type == "cpu"
+    # if query.get_device().type == "cpu":
+    #     return lower_cpu(
+    #         query,
+    #         key,
+    #         value,
+    #         subgraph,
+    #         block_mask,
+    #         scale,
+    #         kernel_options,
+    #         score_mod_other_buffers,
+    #         mask_mod_other_buffers,
+    #     )
     # below is cuda path if device is not cpu
     # tl.dot does not support embedding size less than 16
     small_dqk = V.graph.sizevars.evaluate_expr(sympy.Lt(query.get_size()[-1], 16))
@@ -258,33 +260,33 @@ def flex_attention(
         ]
     )
 
-    if _use_flex_flash_attention(
-        subgraph,
-        mask_graph,
-        kernel_options,
-        num_score_mod_placeholders=len(placeholder_inps),
-        backend=backend,
-    ):
-        return create_flex_flash_attention_kernel(
-            query,
-            key,
-            value,
-            block_mask,
-            scale,
-            kernel_options,
-            subgraph_buffer,
-            mask_graph_buffer,
-            score_mod_other_buffers,
-            mask_mod_other_buffers,
-            kv_num_blocks,
-            kv_indices,
-            full_kv_num_blocks,
-            full_kv_indices,
-            SPARSE_Q_BLOCK_SIZE,
-            SPARSE_KV_BLOCK_SIZE,
-            mask_graph=mask_graph,
-            subgraph=subgraph,
-        )
+    # if _use_flex_flash_attention(
+    #     subgraph,
+    #     mask_graph,
+    #     kernel_options,
+    #     num_score_mod_placeholders=len(placeholder_inps),
+    #     backend=backend,
+    # ):
+    #     return create_flex_flash_attention_kernel(
+    #         query,
+    #         key,
+    #         value,
+    #         block_mask,
+    #         scale,
+    #         kernel_options,
+    #         subgraph_buffer,
+    #         mask_graph_buffer,
+    #         score_mod_other_buffers,
+    #         mask_mod_other_buffers,
+    #         kv_num_blocks,
+    #         kv_indices,
+    #         full_kv_num_blocks,
+    #         full_kv_indices,
+    #         SPARSE_Q_BLOCK_SIZE,
+    #         SPARSE_KV_BLOCK_SIZE,
+    #         mask_graph=mask_graph,
+    #         subgraph=subgraph,
+    #     )
 
     score_mod_other_buffers = maybe_realize(score_mod_other_buffers)
     mask_mod_other_buffers = maybe_realize(mask_mod_other_buffers)
@@ -497,10 +499,10 @@ def flex_attention_backward_grid(batch_size, q_heads, num_queries, d_model, kv_h
 
 
 flex_attention_backward_template = TritonTemplate(
-    name="flex_attention_backward",
+    name="stiff_flex_attention_backward",
     grid=flex_attention_backward_grid,
     source=load_flex_template("flex_backwards") + load_flex_template("utilities"),
-    always_freeze_layout=True,
+    # always_freeze_layout=True,
 )
 
 
@@ -574,7 +576,7 @@ def process_joint_outputs(all_joint_outputs: SubgraphResults, num_placeholders: 
 
 
 # TODO: We probably also need a layout constraint?
-@register_lowering(torch.ops.higher_order.stiff_flex_attention_backward, type_promotion_kind=None)
+@register_lowering(torch.ops.higher_order.flex_attention_backward, type_promotion_kind=None)
 def flex_attention_backward(*args, **kwargs):
     """Lowering for the flex_attention_backward op in triton"""
     (
@@ -650,7 +652,7 @@ def flex_attention_backward(*args, **kwargs):
         f"Bq and Bkv must broadcastable. Got Bq={Bq} and Bkv={Bkv}"
     )
 
-    kernel_options, backend = _sanitize_kernel_options_for_triton(kernel_options)
+    kernel_options, _ = _sanitize_kernel_options_for_triton(kernel_options)
     # Add check for mixed dtypes
     if query.dtype != key.dtype or query.dtype != value.dtype:
         raise ValueError(
@@ -716,59 +718,59 @@ def flex_attention_backward(*args, **kwargs):
     mask_graph_buffer = build_subgraph_buffer(mask_graph_placeholder_inps + list(mask_mod_other_buffers), mask_graph)
     freeze_irnodes(mask_graph_buffer)
 
-    if _use_flex_flash_attention_backward(
-        fw_graph,
-        mask_graph,
-        backend=backend,
-        joint_outputs=joint_outputs,
-        score_mod_other_buffers=score_mod_other_buffers,
-    ):
-        needs_block_mask = not is_trivial_mask_graph(mask_graph.graph_module)
-        if (
-            torch.are_deterministic_algorithms_enabled()
-            and not torch.is_deterministic_algorithms_warn_only_enabled()
-            and needs_block_mask
-        ):
-            raise NotImplementedError(
-                "Deterministic backward for flex_attention with block_mask using the FLASH backend "
-                "is not yet implemented. The TRITON backend supports deterministic backward."
-            )
-        if torch.is_deterministic_algorithms_warn_only_enabled() and needs_block_mask:
-            warnings.warn(
-                "Deterministic backward for flex_attention with block_mask using the FLASH backend "
-                "is not yet implemented. Running non-deterministic backward.",
-                stacklevel=2,
-            )
-        # TODO: Implement dLSE support in flash-attention backward by folding
-        # grad_logsumexp into the dPsum preprocess step.
-        if grad_logsumexp is not None:
-            raise NotImplementedError(
-                "FLASH backend backward does not support differentiating through "
-                "logsumexp (dLSE). This happens when the loss depends on the LSE "
-                "output of flex_attention. "
-                "Use BACKEND='TRITON' or avoid differentiating through logsumexp."
-            )
-        score_is_trivial = is_trivial_score_graph(fw_graph.graph_module)
-        return create_flex_flash_attention_backward_kernel(
-            query,
-            key,
-            value,
-            out,
-            logsumexp,
-            grad_out,
-            scale,
-            kernel_options,
-            SPARSE_Q_BLOCK_SIZE,
-            SPARSE_KV_BLOCK_SIZE,
-            fw_subgraph_buffer=None if score_is_trivial else fw_subgraph_buffer,
-            joint_subgraph_buffer=None if score_is_trivial else joint_outputs.grad_input,
-            score_mod_other_buffers=list(score_mod_other_buffers),
-            mask_graph_buffer=mask_graph_buffer if needs_block_mask else None,
-            q_num_blocks=q_num_blocks if needs_block_mask else None,
-            q_indices=q_indices if needs_block_mask else None,
-            full_q_num_blocks=full_q_num_blocks if needs_block_mask else None,
-            full_q_indices=full_q_indices if needs_block_mask else None,
-        )
+    # if _use_flex_flash_attention_backward(
+    #     fw_graph,
+    #     mask_graph,
+    #     backend=backend,
+    #     joint_outputs=joint_outputs,
+    #     score_mod_other_buffers=score_mod_other_buffers,
+    # ):
+    #     needs_block_mask = not is_trivial_mask_graph(mask_graph.graph_module)
+    #     if (
+    #         torch.are_deterministic_algorithms_enabled()
+    #         and not torch.is_deterministic_algorithms_warn_only_enabled()
+    #         and needs_block_mask
+    #     ):
+    #         raise NotImplementedError(
+    #             "Deterministic backward for flex_attention with block_mask using the FLASH backend "
+    #             "is not yet implemented. The TRITON backend supports deterministic backward."
+    #         )
+    #     if torch.is_deterministic_algorithms_warn_only_enabled() and needs_block_mask:
+    #         warnings.warn(
+    #             "Deterministic backward for flex_attention with block_mask using the FLASH backend "
+    #             "is not yet implemented. Running non-deterministic backward.",
+    #             stacklevel=2,
+    #         )
+    #     # TODO: Implement dLSE support in flash-attention backward by folding
+    #     # grad_logsumexp into the dPsum preprocess step.
+    #     if grad_logsumexp is not None:
+    #         raise NotImplementedError(
+    #             "FLASH backend backward does not support differentiating through "
+    #             "logsumexp (dLSE). This happens when the loss depends on the LSE "
+    #             "output of flex_attention. "
+    #             "Use BACKEND='TRITON' or avoid differentiating through logsumexp."
+    #         )
+    #     score_is_trivial = is_trivial_score_graph(fw_graph.graph_module)
+    #     return create_flex_flash_attention_backward_kernel(
+    #         query,
+    #         key,
+    #         value,
+    #         out,
+    #         logsumexp,
+    #         grad_out,
+    #         scale,
+    #         kernel_options,
+    #         SPARSE_Q_BLOCK_SIZE,
+    #         SPARSE_KV_BLOCK_SIZE,
+    #         fw_subgraph_buffer=None if score_is_trivial else fw_subgraph_buffer,
+    #         joint_subgraph_buffer=None if score_is_trivial else joint_outputs.grad_input,
+    #         score_mod_other_buffers=list(score_mod_other_buffers),
+    #         mask_graph_buffer=mask_graph_buffer if needs_block_mask else None,
+    #         q_num_blocks=q_num_blocks if needs_block_mask else None,
+    #         q_indices=q_indices if needs_block_mask else None,
+    #         full_q_num_blocks=full_q_num_blocks if needs_block_mask else None,
+    #         full_q_indices=full_q_indices if needs_block_mask else None,
+    #     )
 
     # Construct layout with stride order matching K
     key_size = [Bq, Hkv, seq_len_kv, qk_head_dim]

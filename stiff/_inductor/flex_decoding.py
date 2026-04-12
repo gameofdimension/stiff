@@ -104,10 +104,10 @@ def flex_decoding_grid(batch_size, kv_heads, gqa_group_size, seq_len_q, d_model,
 
 
 flex_decoding_template = TritonTemplate(
-    name="flex_decoding",
+    name="stiff_flex_decoding",
     grid=flex_decoding_grid,
     source=load_flex_template("flex_decode") + load_flex_template("utilities") + load_flex_template("common"),
-    always_freeze_layout=True,
+    # always_freeze_layout=True,
 )
 
 
