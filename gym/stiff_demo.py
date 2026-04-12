@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from tabulate import tabulate
 from triton.testing import do_bench
 
+import stiff._inductor  # noqa: F401
 from stiff.attention.flex_attention import (
     _DEFAULT_SPARSE_BLOCK_SIZE,
     create_block_mask,
