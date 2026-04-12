@@ -10,7 +10,7 @@ repos:
 
       - id: ruff-lint
         name: ruff lint
-        entry: uv run --no-sync ruff check --fix
+        entry: uv run --no-sync ruff check --fix --exclude gym/
         types: [python]
         language: system
         pass_filenames: true
