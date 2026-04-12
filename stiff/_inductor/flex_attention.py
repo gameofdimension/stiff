@@ -102,7 +102,7 @@ flex_attention_template = TritonTemplate(
 )
 
 
-@register_lowering(torch.ops.higher_order.flex_attention, type_promotion_kind=None)
+@register_lowering(torch.ops.higher_order.stiff_flex_attention, type_promotion_kind=None)
 def flex_attention(
     query,
     key,
@@ -574,7 +574,7 @@ def process_joint_outputs(all_joint_outputs: SubgraphResults, num_placeholders: 
 
 
 # TODO: We probably also need a layout constraint?
-@register_lowering(torch.ops.higher_order.flex_attention_backward, type_promotion_kind=None)
+@register_lowering(torch.ops.higher_order.stiff_flex_attention_backward, type_promotion_kind=None)
 def flex_attention_backward(*args, **kwargs):
     """Lowering for the flex_attention_backward op in triton"""
     (

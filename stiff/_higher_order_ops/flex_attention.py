@@ -91,7 +91,7 @@ def _permute_strides(out: torch.Tensor, query_strides: tuple[int, ...]) -> torch
 
 class FlexAttentionHOP(HigherOrderOperator):
     def __init__(self) -> None:
-        super().__init__("flex_attention", cacheable=True)
+        super().__init__("stiff_flex_attention", cacheable=True)
 
     def __call__(
         self,
@@ -125,7 +125,7 @@ flex_attention = FlexAttentionHOP()
 
 class FlexAttentionBackwardHOP(HigherOrderOperator):
     def __init__(self) -> None:
-        super().__init__("flex_attention_backward", cacheable=True)
+        super().__init__("stiff_flex_attention_backward", cacheable=True)
 
     def __call__(
         self,
