@@ -1,17 +1,18 @@
-import random
-from functools import lru_cache, partial
+from functools import lru_cache
 
 import torch
 import torch.nn.functional as F
-
 from tabulate import tabulate
+from triton.testing import do_bench
+
 from stiff.attention.flex_attention import (
     _DEFAULT_SPARSE_BLOCK_SIZE,
     create_block_mask,
     create_mask,
+)
+from stiff.attention.flex_attention import (
     flex_attention as flex_attn,
 )
-from triton.testing import do_bench
 
 torch.set_default_device("cuda")
 torch.manual_seed(0)
@@ -22,6 +23,7 @@ data_type = torch.float16
 
 # The kernels will utilize block sparisty to increase performance
 print(f"Using the default sparsity block size: {_DEFAULT_SPARSE_BLOCK_SIZE}")
+
 
 @lru_cache
 def create_block_mask_cached(score_mod, B, H, M, N, device="cuda"):
@@ -49,18 +51,10 @@ def test_mask(
     # For better performance, you can use:
     # flex_attention = torch.compile(_flex_attention, dynamic=False, mode="max-autotune-no-cudagraphs")
 
-    assert (
-        score_mod is not None or mask_mod is not None
-    ), "Must provide a score_mod or mask_mod"
-    query = torch.randn(
-        B, H, S, D, device="cuda", dtype=torch.float16, requires_grad=True
-    )
-    key = torch.randn(
-        B, H, S, D, device="cuda", dtype=torch.float16, requires_grad=True
-    )
-    value = torch.randn(
-        B, H, S, D, device="cuda", dtype=torch.float16, requires_grad=True
-    )
+    assert score_mod is not None or mask_mod is not None, "Must provide a score_mod or mask_mod"
+    query = torch.randn(B, H, S, D, device="cuda", dtype=torch.float16, requires_grad=True)
+    key = torch.randn(B, H, S, D, device="cuda", dtype=torch.float16, requires_grad=True)
+    value = torch.randn(B, H, S, D, device="cuda", dtype=torch.float16, requires_grad=True)
     gradOut = torch.randn(B, H, S, D, device="cuda", dtype=torch.float16)
 
     if mask_mod is not None:
@@ -70,15 +64,9 @@ def test_mask(
     sdpa_mask_fn = mask_mod if mask_mod is not None else score_mod
     mask = create_mask(sdpa_mask_fn, 1, 1, S, S, device=query.device)
 
-    causal_fa2 = lambda: F.scaled_dot_product_attention(
-        query, key, value, is_causal=True
-    )
-    xformers_mask = lambda: F.scaled_dot_product_attention(
-        query, key, value, attn_mask=mask
-    )
-    flex_attention_call = lambda: flex_attention(
-        query, key, value, score_mod=score_mod, block_mask=block_mask
-    )
+    causal_fa2 = lambda: F.scaled_dot_product_attention(query, key, value, is_causal=True)
+    xformers_mask = lambda: F.scaled_dot_product_attention(query, key, value, attn_mask=mask)
+    flex_attention_call = lambda: flex_attention(query, key, value, score_mod=score_mod, block_mask=block_mask)
 
     results = []
     if block_mask is not None:
@@ -98,12 +86,8 @@ def test_mask(
     xformers_out = xformers_mask()
     flex_out = flex_attention_call()
 
-    causal_fa2_bw_time = do_bench(
-        lambda: causal_fa2_out.backward(gradOut, retain_graph=True)
-    )
-    xformers_mask_bw_time = do_bench(
-        lambda: xformers_out.backward(gradOut, retain_graph=True)
-    )
+    causal_fa2_bw_time = do_bench(lambda: causal_fa2_out.backward(gradOut, retain_graph=True))
+    xformers_mask_bw_time = do_bench(lambda: xformers_out.backward(gradOut, retain_graph=True))
     flex_bw_ms = do_bench(lambda: flex_out.backward(gradOut, retain_graph=True))
 
     # Inline correctness check
@@ -156,9 +140,7 @@ def test_mask(
             f"{calculate_tflops(flops, flex_bw_ms, 10):.2f}",
         ],
     ]
-    print(
-        f"\nResults for {score_mod.__name__ if score_mod is not None else mask_mod.__name__}:"
-    )
+    print(f"\nResults for {score_mod.__name__ if score_mod is not None else mask_mod.__name__}:")
     print(
         tabulate(
             results,
@@ -178,6 +160,7 @@ def test_mask(
     # Clean up to save memory
     del query, key, value, gradOut, causal_fa2_out, xformers_out, flex_out
     torch.cuda.empty_cache()
+
 
 def checkerboard(score, batch, head, token_q, token_kv):
     score = torch.where(torch.abs(token_kv - token_q) % 2 == 1, score * 0.5, score)
@@ -202,6 +185,7 @@ def test_checkerboard():
     # Check if the results are close
     torch.testing.assert_close(output, out_compiled, atol=2e-2, rtol=2e-2)
 
+
 # test_checkerboard()
 
 
@@ -224,4 +208,3 @@ def causal_mask(b, h, q_idx, kv_idx):
 
 
 test_mask(mask_mod=causal_mask)
-
